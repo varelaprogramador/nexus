@@ -1,142 +1,327 @@
-"use client"
-import { Plus, Wifi, WifiOff, QrCode, Settings, Trash2 } from "lucide-react"
-import { useAppContext } from "../clientLayout"
-import React from "react"
-
+"use client";
+import { RefreshCw, Plus, Trash2, MessageSquare, Users, MessageCircle, QrCode } from "lucide-react"
+import { useInstances, useCreateInstance, useDeleteInstance, EvolutionInstance, useQrCodeInstance } from "@/hooks/use-instances"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { toast } from "sonner"
+import { useQuery } from '@tanstack/react-query'
+import api from "@/lib/api"
+
+
+const API_KEY = process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || ""
 
 export default function InstancesPage() {
-  const { lastUpdated } = useAppContext()
-  const [refreshKey, setRefreshKey] = React.useState(0)
-  const [instances, setInstances] = React.useState([
-    {
-      name: "WhatsApp Principal",
-      status: "online",
-      number: "+55 11 99999-9999",
-      messages: 1247,
-      uptime: "99.9%",
-    },
-    { name: "WhatsApp Vendas", status: "offline", number: "+55 11 88888-8888", messages: 856, uptime: "95.2%" },
-    { name: "WhatsApp Suporte", status: "online", number: "+55 11 77777-7777", messages: 2134, uptime: "98.7%" },
-  ])
+  const { data: instances = [], isLoading, refetch } = useInstances(API_KEY) as { data: EvolutionInstance[], isLoading: boolean, refetch: () => void }
+  const createInstance = useCreateInstance(API_KEY)
+  const deleteInstance = useDeleteInstance(API_KEY)
+  const [open, setOpen] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [instanceToDelete, setInstanceToDelete] = useState<string | null>(null)
+  const [newInstance, setNewInstance] = useState({ instanceName: "" })
+  const [qrDialogOpen, setQrDialogOpen] = useState(false)
+  const [qrInstance, setQrInstance] = useState<string | null>(null)
+  const qrCodeQuery = useQrCodeInstance(qrInstance || "", API_KEY, !!qrDialogOpen && !!qrInstance)
 
-  // Função para atualizar dados das instâncias
-  const updateInstancesData = React.useCallback(() => {
-    setInstances((prev) =>
-      prev.map((instance) => ({
-        ...instance,
-        messages: instance.messages + Math.floor(Math.random() * 50),
-        status: Math.random() > 0.1 ? "online" : "offline", // 90% chance de estar online
-      })),
-    )
-  }, [])
+  // Função para criar instância
+  const handleCreate = () => {
+    if (!newInstance.instanceName) return
+    createInstance.mutate({ ...newInstance, integration: "WHATSAPP-BAILEYS" }, {
+      onSuccess: () => {
+        setOpen(false)
+        setNewInstance({ instanceName: "" })
+        toast.success("Instância criada com sucesso!")
+      },
+      onError: (error: any) => {
+        toast.error("Erro ao criar instância", {
+          description: error?.message || "Tente novamente."
+        })
+      }
+    })
+  }
 
-  // Escutar eventos de refresh
-  React.useEffect(() => {
-    const handleRefresh = () => {
-      setRefreshKey((prev) => prev + 1)
-      updateInstancesData()
-    }
-
-    window.addEventListener("pageRefresh", handleRefresh)
-    window.addEventListener("autoRefresh", handleRefresh)
-
-    return () => {
-      window.removeEventListener("pageRefresh", handleRefresh)
-      window.removeEventListener("autoRefresh", handleRefresh)
-    }
-  }, [updateInstancesData])
+  // Função para deletar instância
+  const handleDelete = (instanceName: string) => {
+    deleteInstance.mutate(instanceName, {
+      onSuccess: () => {
+        setDeleteDialogOpen(false)
+        setInstanceToDelete(null)
+        toast.success("Instância excluída com sucesso!")
+      },
+      onError: (error: any) => {
+        toast.error("Erro ao excluir instância", {
+          description: error?.message || "Tente novamente."
+        })
+      }
+    })
+  }
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">
-            Instâncias
-          </h1>
-          <p className="text-zinc-400 mt-2">Gerencie suas conexões WhatsApp</p>
+    <Card className="border border-border/40 bg-background/60 backdrop-blur-sm">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Instâncias do WhatsApp</CardTitle>
+            <CardDescription>Gerencie suas instâncias do Evolution API</CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              disabled={isLoading}
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+            </Button>
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" className="bg-primary hover:bg-primary/90">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nova Instância
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Criar Nova Instância</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <label htmlFor="instanceName" className="text-sm font-medium">Nome da Instância</label>
+                    <Input
+                      id="instanceName"
+                      value={newInstance.instanceName}
+                      onChange={e => setNewInstance({ instanceName: e.target.value })}
+                      placeholder="Digite o nome da instância"
+                      className="border-border/40"
+                    />
+                  </div>
+                  <Button
+                    className="w-full bg-primary hover:bg-primary/90"
+                    onClick={handleCreate}
+                    disabled={!newInstance.instanceName || createInstance.isPending}
+                  >
+                    {createInstance.isPending ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Criando...
+                      </>
+                    ) : (
+                      "Criar Instância"
+                    )}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
-        <Button className="bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-black font-medium shadow-lg shadow-emerald-500/25">
-          <Plus className="w-4 h-4 mr-2" />
-          Nova Instância
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {instances.map((instance, i) => (
-          <Card
-            key={i}
-            className="bg-gradient-to-br from-zinc-900 to-zinc-800 border-zinc-700/50 shadow-xl shadow-black/20 hover:shadow-emerald-500/10 transition-all duration-300 group"
-          >
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div
-                    className={`w-3 h-3 rounded-full ${instance.status === "online" ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`}
-                  ></div>
-                  <CardTitle className="text-white text-lg">{instance.name}</CardTitle>
-                </div>
-                {instance.status === "online" ? (
-                  <Wifi className="w-5 h-5 text-emerald-400" />
-                ) : (
-                  <WifiOff className="w-5 h-5 text-red-400" />
-                )}
-              </div>
-              <CardDescription className="text-zinc-400 font-mono">{instance.number}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-zinc-800/30 rounded-lg p-3">
-                  <p className="text-zinc-400 text-xs">Mensagens</p>
-                  <p className="text-white font-bold text-lg">{instance.messages}</p>
-                </div>
-                <div className="bg-zinc-800/30 rounded-lg p-3">
-                  <p className="text-zinc-400 text-xs">Uptime</p>
-                  <p className="text-emerald-400 font-bold text-lg">{instance.uptime}</p>
-                </div>
-              </div>
-
-              <Badge
-                variant={instance.status === "online" ? "default" : "destructive"}
-                className={
-                  instance.status === "online"
-                    ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                    : "bg-red-500/20 text-red-400 border-red-500/30"
-                }
-              >
-                {instance.status === "online" ? "Online" : "Offline"}
-              </Badge>
-
-              <div className="flex space-x-2 pt-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-emerald-500/50 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 flex-1"
-                >
-                  <QrCode className="w-4 h-4 mr-1" />
-                  QR Code
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-zinc-600 bg-zinc-800/50 text-zinc-300 hover:bg-zinc-700"
-                >
-                  <Settings className="w-4 h-4" />
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-red-500/50 text-red-400 bg-red-500/10 hover:bg-red-500/20"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3].map(i => (
+              <Card key={i} className="border border-border/40 bg-background/60 backdrop-blur-sm">
+                <CardHeader className="pb-2">
+                  <Skeleton className="h-6 w-32" />
+                  <Skeleton className="h-4 w-24 mt-2" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-[200px] w-full" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : instances.length === 0 ? (
+          <div className="text-center py-16 text-muted-foreground">
+            <div className="mx-auto w-24 h-24 rounded-full bg-muted flex items-center justify-center mb-4">
+              <MessageSquare className="h-10 w-10 text-muted-foreground/50" />
+            </div>
+            <h3 className="text-lg font-medium">Nenhuma instância encontrada</h3>
+            <p className="mt-2">Crie uma nova instância para começar a usar o WhatsApp API.</p>
+            <Button
+              onClick={() => setOpen(true)}
+              className="mt-4 bg-primary hover:bg-primary/90"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Nova Instância
+            </Button>
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {instances.map(instance => (
+              <Card key={instance.id} className="h-full flex flex-col transition-all duration-300 hover:shadow-md border-border/40 bg-background/60 backdrop-blur-sm">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {instance.profilePicUrl ? (
+                        <img
+                          src={instance.profilePicUrl}
+                          alt={instance.profileName}
+                          className="w-10 h-10 rounded-full object-cover border-2 border-background"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                          <MessageCircle className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div>
+                        <CardTitle className="text-lg">{instance.profileName || instance.name}</CardTitle>
+                        <CardDescription>{instance.id}</CardDescription>
+                      </div>
+                    </div>
+                    <TooltipProvider>
+                      <div className="flex gap-1">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setInstanceToDelete(instance.name)
+                                setDeleteDialogOpen(true)
+                              }}
+                              className="h-8 w-8"
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Excluir Instância</p>
+                          </TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setQrInstance(instance.name)
+                                setQrDialogOpen(true)
+                              }}
+                              className="h-8 w-8"
+                            >
+                              <QrCode className="h-4 w-4 text-emerald-400" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Gerar QR Code</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </TooltipProvider>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <Badge variant={instance.connectionStatus === "open" ? "default" : "destructive"}>
+                      {instance.connectionStatus === "open" ? "Online" : "Offline"}
+                    </Badge>
+                    {instance.number && <span className="text-sm text-muted-foreground">• {instance.number}</span>}
+                  </div>
+                  {instance.connectionStatus === "close" && instance.disconnectionReasonCode && (
+                    <CardDescription className="text-xs mt-1 text-destructive">
+                      Desconectado: {instance.disconnectionReasonCode}
+                    </CardDescription>
+                  )}
+                </CardHeader>
+                <CardContent className="flex-grow">
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <div className="bg-muted/50 rounded-lg p-3 text-center">
+                      <div className="flex flex-col items-center">
+                        <MessageSquare className="h-4 w-4 mb-1 text-muted-foreground" />
+                        <div className="font-medium">{instance._count?.Message ?? '-'}</div>
+                        <div className="text-xs text-muted-foreground">Mensagens</div>
+                      </div>
+                    </div>
+                    <div className="bg-muted/50 rounded-lg p-3 text-center">
+                      <div className="flex flex-col items-center">
+                        <Users className="h-4 w-4 mb-1 text-muted-foreground" />
+                        <div className="font-medium">{instance._count?.Contact ?? '-'}</div>
+                        <div className="text-xs text-muted-foreground">Contatos</div>
+                      </div>
+                    </div>
+                    <div className="bg-muted/50 rounded-lg p-3 text-center">
+                      <div className="flex flex-col items-center">
+                        <MessageCircle className="h-4 w-4 mb-1 text-muted-foreground" />
+                        <div className="font-medium">{instance._count?.Chat ?? '-'}</div>
+                        <div className="text-xs text-muted-foreground">Chats</div>
+                      </div>
+                    </div>
+                  </div>
+                  {instance.token && (
+                    <div className="mt-4 text-sm">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium">Token:</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => navigator.clipboard.writeText(instance.token || "N/A")}
+                        >
+                          Copiar
+                        </Button>
+                      </div>
+                      <div className="bg-muted p-2 rounded text-xs font-mono overflow-hidden">
+                        <code className="block overflow-x-auto truncate">{instance.token || "N/A"}</code>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </CardContent>
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir a instância{" "}
+              <span className="font-semibold">{instanceToDelete}</span>? Esta ação
+              não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => instanceToDelete && handleDelete(instanceToDelete)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>QR Code para conexão</DialogTitle>
+          </DialogHeader>
+          {qrCodeQuery.isLoading ? (
+            <div className="flex justify-center items-center h-48">Carregando QR Code...</div>
+          ) : qrCodeQuery.data?.qrCode ? (
+            <div className="flex flex-col items-center">
+              <img src={qrCodeQuery.data.qrCode} alt="QR Code" className="w-48 h-48" />
+              <div className="text-xs text-muted-foreground mt-2">Escaneie este código com seu WhatsApp</div>
+            </div>
+          ) : (
+            <div className="text-center text-red-500">QR Code não disponível.</div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </Card>
   )
 }

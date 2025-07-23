@@ -53,25 +53,25 @@ const AppContext = React.createContext<{
 
 export const useAppContext = () => React.useContext(AppContext)
 
-function LoadingOverlay() {
-  return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
-      <div className="bg-gradient-to-br from-zinc-900 to-zinc-800 border border-zinc-700/50 rounded-xl p-8 shadow-xl shadow-black/20">
-        <div className="flex items-center space-x-4">
-          <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin" />
-          <div>
-            <h3 className="text-white font-semibold text-lg">Atualizando página...</h3>
-            <p className="text-zinc-400 text-sm">Carregando dados mais recentes</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
+// function LoadingOverlay() {
+//   return (
+//     <div className="fixed inset-0  z-50 flex items-center justify-center">
+//       <div className="bg-gradient-to-br from-zinc-900 to-zinc-800 border border-zinc-700/50 rounded-xl p-8 shadow-xl shadow-black/20">
+//         <div className="flex items-center space-x-4">
+//           <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin" />
+//           <div>
+//             <h3 className="text-white font-semibold text-lg">Atualizando página...</h3>
+//             <p className="text-zinc-400 text-sm">Carregando dados mais recentes</p>
+//           </div>
+//         </div>
+//       </div>
+//     </div>
+//   )
+// }
 
 function AppSidebar() {
   const [currentPage, setCurrentPage] = React.useState<Page>("dashboard")
-  const { isLoading, setIsLoading, lastUpdated, refreshPage } = useAppContext()
+
 
   React.useEffect(() => {
     const path = window.location.pathname
@@ -86,19 +86,12 @@ function AppSidebar() {
   const handleNavigation = async (item: (typeof menuItems)[0]) => {
     if (currentPage === item.id) return
 
-    setIsLoading(true)
-    await new Promise((resolve) => setTimeout(resolve, 1500))
+
 
     setCurrentPage(item.id)
     router.push(item.href) // <-- substitui pushState
 
-    setTimeout(() => {
-      refreshPage()
-      setIsLoading(false)
-    }, 500)
   }
-
-
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString("pt-BR", {
       hour: "2-digit",
@@ -129,7 +122,7 @@ function AppSidebar() {
           <div className="flex items-center justify-between">
             <span className="text-zinc-400 text-xs">Última atualização:</span>
             <Badge variant="outline" className="border-emerald-500/50 text-emerald-400 bg-emerald-500/10 text-xs">
-              {formatTime(lastUpdated)}
+
             </Badge>
           </div>
         </div>
@@ -141,14 +134,14 @@ function AppSidebar() {
             <button
               key={item.id}
               onClick={() => handleNavigation(item)}
-              disabled={isLoading}
+
               className={`group relative w-full justify-start text-left font-medium transition-all duration-200 hover:bg-zinc-800/50 rounded-lg px-3 py-2.5 flex items-center disabled:opacity-50 disabled:cursor-not-allowed ${currentPage === item.id
                 ? "bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 text-emerald-400 border-r-2 border-emerald-400"
                 : "text-white"
                 }`}
             >
               <item.icon
-                className={`w-5 h-5 transition-transform group-hover:scale-110 ${isLoading ? "animate-pulse" : ""}`}
+                className={`w-5 h-5 transition-transform group-hover:scale-110 `}
               />
               <span className="ml-3">{item.label}</span>
               {currentPage === item.id && (
@@ -185,60 +178,61 @@ export default function ClientLayout({
 }: {
   children: React.ReactNode
 }) {
-  const [isLoading, setIsLoading] = React.useState(false)
-  const [lastUpdated, setLastUpdated] = React.useState(new Date())
+  // const [isLoading, setIsLoading] = React.useState(false)
+  // const [lastUpdated, setLastUpdated] = React.useState(new Date())
 
-  const refreshPage = React.useCallback(() => {
-    setLastUpdated(new Date())
-    // Disparar evento customizado para que as páginas possam se atualizar
-    window.dispatchEvent(new CustomEvent("pageRefresh", { detail: { timestamp: new Date() } }))
-  }, [])
+  // const refreshPage = React.useCallback(() => {
+  //   setLastUpdated(new Date())
+  //   // Disparar evento customizado para que as páginas possam se atualizar
+  //   window.dispatchEvent(new CustomEvent("pageRefresh", { detail: { timestamp: new Date() } }))
+  // }, [])
 
-  const contextValue = React.useMemo(
-    () => ({
-      isLoading,
-      setIsLoading,
-      lastUpdated,
-      refreshPage,
-    }),
-    [isLoading, lastUpdated, refreshPage],
-  )
+  // const contextValue = React.useMemo(
+  //   () => ({
+  //     isLoading,
+  //     setIsLoading,
+  //     lastUpdated,
+  //     refreshPage,
+  //   }),
+  //   [isLoading, lastUpdated, refreshPage],
+  // )
 
   // Instância do QueryClient
   const [queryClient] = React.useState(() => new QueryClient())
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AppContext.Provider value={contextValue}>
-        <div className="bg-black grid grid-cols-[256px_1fr] relative h-screen">
-          {isLoading && <LoadingOverlay />}
 
-          {/* Sidebar fixo */}
-          <div className="h-screen sticky top-0 left-0 z-40">
-            <AppSidebar />
-          </div>
-          <div className="flex flex-col h-screen">
-            <header className="flex h-16 shrink-0 items-center gap-2 border-b border-zinc-800/50 px-6 bg-black/95 backdrop-blur-xl ">
-              <div className="flex items-center space-x-4 ml-auto">
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-                  <span className="text-emerald-400 text-sm font-medium">Online</span>
-                </div>
-                <Button size="sm" variant="ghost" className="text-zinc-400 hover:text-white hover:bg-zinc-800/50">
-                  <Bell className="w-4 h-4" />
-                </Button>
-                <Button size="sm" variant="ghost" className="text-zinc-400 hover:text-white hover:bg-zinc-800/50">
-                  <User className="w-4 h-4" />
-                </Button>
+      <div className="bg-black grid grid-cols-[256px_1fr] relative h-screen">
+
+
+        {/* Sidebar fixo */}
+        <div className="h-screen sticky top-0 left-0 z-40">
+          <AppSidebar />
+        </div>
+        <div className="flex flex-col h-screen">
+          <header className="flex h-16 shrink-0 items-center gap-2 border-b border-zinc-800/50 px-6 bg-black/95 backdrop-blur-xl ">
+            <div className="flex items-center space-x-4 ml-auto">
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                <span className="text-emerald-400 text-sm font-medium">Online</span>
               </div>
-            </header>
-            {/* Conteúdo scrollável */}
-            <div className="flex flex-1 flex-col gap-4 p-6 bg-gradient-to-br from-black via-zinc-950 to-black overflow-y-auto h-[calc(100vh-4rem)]">
-              {children}
+              <Button size="sm" variant="ghost" className="text-zinc-400 hover:text-white hover:bg-zinc-800/50">
+                <Bell className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="ghost" className="text-zinc-400 hover:text-white hover:bg-zinc-800/50">
+                <User className="w-4 h-4" />
+              </Button>
             </div>
+          </header>
+          {/* Conteúdo scrollável */}
+          <div className="flex flex-1 flex-col gap-4 p-6 bg-gradient-to-br from-black via-zinc-950 to-black overflow-y-auto h-[calc(100vh-4rem)]">
+            {/* {isLoading && <LoadingOverlay />} */}
+            {children}
           </div>
         </div>
-      </AppContext.Provider>
+      </div>
+
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   )
