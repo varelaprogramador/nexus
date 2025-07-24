@@ -151,7 +151,7 @@ const VirtualizedContactsTableBody = ({ contacts }: { contacts: any[] }) => {
 
 export default function ContactsPage() {
   const apikey = process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || ""
-  const { data: instances = [] } = useInstances(apikey)
+  const { data: instances = [] } = useInstances()
   const [activeInstance, setActiveInstance] = useState<string>("")
   const shouldFetch = !!activeInstance
   const { data: contacts = [], isLoading, isError, error } = useContacts(activeInstance, apikey, shouldFetch)

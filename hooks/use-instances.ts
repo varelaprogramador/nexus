@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
+import axios from "axios";
 
 export type EvolutionInstance = {
   id: string;
@@ -43,34 +44,30 @@ export type EvolutionInstance = {
     Contact: number;
     Chat: number;
   };
+  userId?: string;
+  evolution?: any;
 };
 
-export function useInstances(apikey: string) {
+export function useInstances() {
   return useQuery<EvolutionInstance[]>({
-    queryKey: ["instances", apikey],
+    queryKey: ["instances"],
     queryFn: async () => {
-      const { data } = await api.get("/instance/fetchInstances", {
-        headers: { apikey },
-      });
-      return Array.isArray(data)
-        ? data.map((item: EvolutionInstance) => item)
-        : [];
+      const { data } = await axios.get("/api/instances");
+      return Array.isArray(data.instances) ? data.instances : [];
     },
   });
 }
 
 // Criar instância
-export function useCreateInstance(apikey: string) {
+export function useCreateInstance() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: any) => {
-      const { data } = await api.post("/instance/create", payload, {
-        headers: { apikey, "Content-Type": "application/json" },
-      });
+    mutationFn: async (payload: { name: string }) => {
+      const { data } = await axios.post("/api/instances", payload);
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["instances", apikey] });
+      queryClient.invalidateQueries({ queryKey: ["instances"] });
     },
   });
 }

@@ -893,7 +893,7 @@ function getMimeType(file: File): string {
 
 export default function MassDispatchPage() {
   const apikey = process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || ""
-  const { data: instances = [] } = useInstances(apikey)
+  const { data: instances = [] } = useInstances()
   const [selectedInstance, setSelectedInstance] = useState<string>("")
   const [messageBlocks, setMessageBlocks] = useState<MessageBlock[]>([{ id: "1", type: "text", content: "" }])
   const [contactsDialogOpen, setContactsDialogOpen] = useState(false)

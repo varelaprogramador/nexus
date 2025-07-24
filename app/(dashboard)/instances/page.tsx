@@ -20,16 +20,15 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner"
-import { useQuery } from '@tanstack/react-query'
-import api from "@/lib/api"
+
 
 
 const API_KEY = process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || ""
 
 export default function InstancesPage() {
-  const { data: instances = [], isLoading, refetch } = useInstances(API_KEY) as { data: EvolutionInstance[], isLoading: boolean, refetch: () => void }
-  const createInstance = useCreateInstance(API_KEY)
-  const deleteInstance = useDeleteInstance(API_KEY)
+  const { data: instances = [], isLoading, refetch } = useInstances() as { data: EvolutionInstance[], isLoading: boolean, refetch: () => void }
+  const createInstance = useCreateInstance()
+  const deleteInstance = useDeleteInstance(API_KEY) // Mantém para Evolution API
   const [open, setOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [instanceToDelete, setInstanceToDelete] = useState<string | null>(null)
@@ -41,7 +40,7 @@ export default function InstancesPage() {
   // Função para criar instância
   const handleCreate = () => {
     if (!newInstance.instanceName) return
-    createInstance.mutate({ ...newInstance, integration: "WHATSAPP-BAILEYS" }, {
+    createInstance.mutate({ name: newInstance.instanceName }, {
       onSuccess: () => {
         setOpen(false)
         setNewInstance({ instanceName: "" })
@@ -312,7 +311,7 @@ export default function InstancesPage() {
           </DialogHeader>
           {qrCodeQuery.isLoading ? (
             <div className="flex justify-center items-center h-48">Carregando QR Code...</div>
-          ) : qrCodeQuery.data?.qrCode ? (
+          ) : qrCodeQuery.data?.base64 ? (
             <div className="flex flex-col items-center">
               <img src={qrCodeQuery.data.qrCode} alt="QR Code" className="w-48 h-48" />
               <div className="text-xs text-muted-foreground mt-2">Escaneie este código com seu WhatsApp</div>

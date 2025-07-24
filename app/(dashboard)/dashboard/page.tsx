@@ -2,35 +2,23 @@
 
 import * as React from "react"
 import {
-  BarChart3,
+
   Users,
-  MessageSquare,
+
   Send,
-  FileSpreadsheet,
-  Settings,
+
   Plus,
-  Upload,
-  Eye,
-  Edit,
-  Trash2,
-  Play,
-  Clock,
+
   CheckCircle,
   XCircle,
-  Wifi,
-  WifiOff,
-  QrCode,
+
   TrendingUp,
   Activity,
-  Zap,
-  Target,
   ArrowUpRight,
   ArrowDownRight,
   MoreHorizontal,
-  Filter,
-  Search,
-  Bell,
-  User,
+  Filter
+
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -38,55 +26,55 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 
 import { Badge } from "@/components/ui/badge"
 
-import AppSidebar from "@/components/AppSidebar" // Import AppSidebar component
-import { useAppContext } from "../clientLayout"
+import { useEffect, useState } from "react"
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 
-type Page = "dashboard" | "instances" | "groups" | "contacts" | "mass-dispatch" | "xls-dispatch"
-
-const menuItems = [
-  { id: "dashboard" as Page, label: "Dashboard", icon: BarChart3 },
-  { id: "instances" as Page, label: "Instâncias", icon: Zap },
-  { id: "groups" as Page, label: "Grupos", icon: Users },
-  { id: "contacts" as Page, label: "Contatos", icon: MessageSquare },
-  { id: "mass-dispatch" as Page, label: "Disparo em Massa", icon: Send },
-  { id: "xls-dispatch" as Page, label: "Disparo XLS", icon: FileSpreadsheet },
-]
 
 export default function DashboardPage() {
-  const { lastUpdated } = useAppContext()
-  const [refreshKey, setRefreshKey] = React.useState(0)
-  const [stats, setStats] = React.useState({
-    totalSent: 12847,
-    delivered: 11923,
-    failed: 924,
-    activeContacts: 8456,
-  })
+  const [logs, setLogs] = useState<any[]>([])
+  const [loadingLogs, setLoadingLogs] = useState(true)
 
-  // Função para gerar novos dados simulados
-  const generateNewStats = React.useCallback(() => {
-    setStats((prev) => ({
-      totalSent: prev.totalSent + Math.floor(Math.random() * 100),
-      delivered: prev.delivered + Math.floor(Math.random() * 80),
-      failed: prev.failed + Math.floor(Math.random() * 10),
-      activeContacts: prev.activeContacts + Math.floor(Math.random() * 50),
-    }))
+  useEffect(() => {
+    const fetchLogs = async () => {
+      setLoadingLogs(true)
+      try {
+        const res = await fetch('/api/log')
+        const data = await res.json()
+        setLogs(data.logs || [])
+      } catch (e) {
+        setLogs([])
+      } finally {
+        setLoadingLogs(false)
+      }
+    }
+    fetchLogs()
   }, [])
 
-  // Escutar eventos de refresh
-  React.useEffect(() => {
-    const handleRefresh = () => {
-      setRefreshKey((prev) => prev + 1)
-      generateNewStats()
-    }
+  // KPIs dinâmicos a partir dos logs reais
+  const totalSent = logs.length
+  const delivered = logs.filter(l => l.status === 'sucesso' || l.type === 'success').length
+  const failed = logs.filter(l => l.status === 'erro' || l.type === 'error').length
+  const activeContacts = new Set(logs.map(l => l.numero)).size
 
-    window.addEventListener("pageRefresh", handleRefresh)
-    window.addEventListener("autoRefresh", handleRefresh)
+  // Porcentagens reais
+  const percent = (value: number) => totalSent > 0 ? ((value / totalSent) * 100).toFixed(1) : '0'
+  const successRate = percent(delivered)
+  const failRate = percent(failed)
 
-    return () => {
-      window.removeEventListener("pageRefresh", handleRefresh)
-      window.removeEventListener("autoRefresh", handleRefresh)
-    }
-  }, [generateNewStats])
+  // Atividade recente: últimos 7 logs
+  const recentActivity = logs.slice(0, 7)
+
+  // Gerar dados para o gráfico de barras (disparos por dia, últimos 7 dias)
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() - (6 - i))
+    return d
+  })
+  const barData = days.map(day => {
+    const dayStr = day.toLocaleDateString()
+    const count = logs.filter(l => new Date(l.createdAt).toLocaleDateString() === dayStr).length
+    return { day: dayStr, disparos: count }
+  })
 
   return (
     <div className="space-y-8">
@@ -97,16 +85,7 @@ export default function DashboardPage() {
           </h1>
           <p className="text-zinc-400 mt-2">Visão geral das suas campanhas e performance</p>
         </div>
-        <div className="flex items-center space-x-3">
-          <Button variant="outline" className="border-zinc-700 bg-zinc-900/50 text-zinc-300 hover:bg-zinc-800">
-            <Filter className="w-4 h-4 mr-2" />
-            Filtros
-          </Button>
-          <Button className="bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-black font-medium shadow-lg shadow-emerald-500/25">
-            <Plus className="w-4 h-4 mr-2" />
-            Nova Campanha
-          </Button>
-        </div>
+
       </div>
 
       {/* KPI Cards */}
@@ -116,7 +95,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-zinc-400 text-sm font-medium">Total Enviadas</p>
-                <p className="text-3xl font-bold text-white mt-2">{stats.totalSent}</p>
+                <p className="text-3xl font-bold text-white mt-2">{totalSent}</p>
                 <div className="flex items-center mt-2 text-emerald-400 text-sm">
                   <ArrowUpRight className="w-4 h-4 mr-1" />
                   <span>+12.5%</span>
@@ -134,7 +113,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-zinc-400 text-sm font-medium">Entregues</p>
-                <p className="text-3xl font-bold text-white mt-2">{stats.delivered}</p>
+                <p className="text-3xl font-bold text-white mt-2">{delivered}</p>
                 <div className="flex items-center mt-2 text-green-400 text-sm">
                   <ArrowUpRight className="w-4 h-4 mr-1" />
                   <span>+8.2%</span>
@@ -152,7 +131,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-zinc-400 text-sm font-medium">Falhas</p>
-                <p className="text-3xl font-bold text-white mt-2">{stats.failed}</p>
+                <p className="text-3xl font-bold text-white mt-2">{failed}</p>
                 <div className="flex items-center mt-2 text-red-400 text-sm">
                   <ArrowDownRight className="w-4 h-4 mr-1" />
                   <span>-2.1%</span>
@@ -170,7 +149,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-zinc-400 text-sm font-medium">Contatos Ativos</p>
-                <p className="text-3xl font-bold text-white mt-2">{stats.activeContacts}</p>
+                <p className="text-3xl font-bold text-white mt-2">{activeContacts}</p>
                 <div className="flex items-center mt-2 text-blue-400 text-sm">
                   <ArrowUpRight className="w-4 h-4 mr-1" />
                   <span>+15.3%</span>
@@ -203,7 +182,7 @@ export default function DashboardPage() {
               <div className="w-40 h-40 rounded-full border-8 border-gradient-to-r from-emerald-400 to-cyan-400 flex items-center justify-center relative">
                 <div className="absolute inset-2 rounded-full bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 backdrop-blur-sm"></div>
                 <div className="text-center z-10">
-                  <p className="text-2xl font-bold text-white">92%</p>
+                  <p className="text-2xl font-bold text-white">{successRate}%</p>
                   <p className="text-xs text-zinc-400">Taxa de Sucesso</p>
                 </div>
               </div>
@@ -229,8 +208,8 @@ export default function DashboardPage() {
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-white text-xl">Disparos Recentes</CardTitle>
-                <CardDescription className="text-zinc-400">Últimas 7 campanhas</CardDescription>
+                <CardTitle className="text-white text-xl">Disparos por Dia</CardTitle>
+                <CardDescription className="text-zinc-400">Evolução dos disparos nos últimos 7 dias</CardDescription>
               </div>
               <Button size="sm" variant="ghost" className="text-zinc-400 hover:text-white">
                 <TrendingUp className="w-4 h-4" />
@@ -238,16 +217,16 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="h-64 flex items-end justify-between space-x-2 p-4">
-              {[65, 45, 80, 55, 90, 70, 85].map((height, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center space-y-2">
-                  <div
-                    className="w-full bg-gradient-to-t from-emerald-500 to-cyan-400 rounded-t-lg transition-all duration-500 hover:from-emerald-400 hover:to-cyan-300"
-                    style={{ height: `${height}%` }}
-                  />
-                  <span className="text-xs text-zinc-400">{i + 1}d</span>
-                </div>
-              ))}
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={barData} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+                  <XAxis dataKey="day" stroke="#aaa" fontSize={12} />
+                  <YAxis stroke="#aaa" fontSize={12} allowDecimals={false} />
+                  <Tooltip contentStyle={{ background: '#18181b', border: '1px solid #27272a', color: '#fff' }} />
+                  <Bar dataKey="disparos" fill="#10b981" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>
@@ -271,37 +250,32 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {[
-              { time: "14:30", group: "Grupo Marketing", status: "entregue", count: 150, user: "João Silva" },
-              { time: "13:15", group: "Grupo Vendas", status: "falhou", count: 45, user: "Maria Santos" },
-              { time: "12:00", group: "Grupo Suporte", status: "entregue", count: 89, user: "Pedro Costa" },
-              { time: "11:45", group: "Grupo Premium", status: "entregue", count: 234, user: "Ana Lima" },
-            ].map((item, i) => (
+            {recentActivity.map((log, i) => (
               <div
                 key={i}
                 className="flex items-center justify-between p-4 bg-zinc-800/30 rounded-xl border border-zinc-700/30 hover:bg-zinc-800/50 transition-colors"
               >
                 <div className="flex items-center space-x-4">
                   <div className="w-10 h-10 bg-gradient-to-br from-zinc-700 to-zinc-600 rounded-lg flex items-center justify-center">
-                    <span className="text-emerald-400 font-mono text-sm">{item.time}</span>
+                    <span className="text-emerald-400 font-mono text-sm">{new Date(log.createdAt).toLocaleTimeString()}</span>
                   </div>
                   <div>
-                    <p className="text-white font-medium">{item.group}</p>
-                    <p className="text-zinc-400 text-sm">por {item.user}</p>
+                    <p className="text-white font-medium">{log.numero}</p>
+                    <p className="text-zinc-400 text-sm">por {log.userName}</p>
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
                   <Badge
-                    variant={item.status === "entregue" ? "default" : "destructive"}
+                    variant={log.status === "sucesso" || log.type === "success" ? "default" : "destructive"}
                     className={
-                      item.status === "entregue"
+                      log.status === "sucesso" || log.type === "success"
                         ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
                         : "bg-red-500/20 text-red-400 border-red-500/30"
                     }
                   >
-                    {item.status}
+                    {log.status}
                   </Badge>
-                  <span className="text-zinc-400 text-sm font-medium">{item.count} msgs</span>
+                  <span className="text-zinc-400 text-sm font-medium">{log.count} msgs</span>
                 </div>
               </div>
             ))}

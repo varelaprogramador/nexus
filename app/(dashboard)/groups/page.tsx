@@ -186,7 +186,7 @@ const useGroups = (instanceName: string, apikey: string, enabled = true) => {
 export default function GroupsPage() {
   // Buscar instâncias disponíveis
   const apikey = process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || ""
-  const { data: instances = [] } = useInstances(apikey)
+  const { data: instances = [] } = useInstances()
   // Estado para instância ativa
   const [activeInstance, setActiveInstance] = useState<string>(instances[0]?.name || "")
   const shouldFetch = !!activeInstance

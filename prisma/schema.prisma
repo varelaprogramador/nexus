@@ -1,0 +1,44 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model DisparoLog {
+  id           String   @id @default(uuid())
+  createdAt    DateTime @default(now()) // timestamp
+  updatedAt    DateTime @updatedAt
+  type         String // Ex: success, error, warning, info, text, image, etc
+  status       String // Ex: sucesso, erro, pendente, enviando
+  instance     String // Nome ou ID da instância utilizada
+  numero       String // Número de destino
+  mensagem     String // Mensagem principal do log (exibida na tabela)
+  payload      Json // Dados enviados (mensagem, arquivo, etc)
+  response     Json? // Resposta da API/disparo
+  error        String? // Mensagem de erro, se houver
+  userId       String? // Usuário responsável pelo disparo (se aplicável)
+  userName     String? // Nome do usuário
+  userIp       String? // IP do usuário
+  module       String? // Módulo/origem do disparo (ex: xls-dispatch, mass-dispatch)
+  messageBlock String? // Identificador do bloco de mensagem (se aplicável)
+  campaignId   String? // ID de campanha, se for disparo em massa
+  extra        Json? // Qualquer informação adicional
+}
+
+model Instance {
+  id        String   @id @default(uuid())
+  name      String
+  userId    String // id do usuário Clerk
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

@@ -1,5 +1,8 @@
 import { useState } from "react";
 import api from "@/lib/api";
+import prisma from "@/lib/prisma";
+import { useUser } from "@clerk/nextjs";
+import os from "os";
 
 interface DisparoResult {
   numero: string;
@@ -82,9 +85,48 @@ interface UseDisparo {
   error: string | null;
 }
 
+// Função utilitária para registrar log de disparo
+const registrarLogDisparo = async (logData: any) => {
+  try {
+    const res = await fetch("/api/log-disparo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(logData),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      console.error("[LOG DISPARO][ERRO API]", logData, err);
+    }
+  } catch (e) {
+    console.error("[LOG DISPARO][ERRO FETCH]", logData, e);
+  }
+};
+
+// Função para obter o IP local (server-side)
+const getLocalIp = () => {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] || []) {
+      if (iface.family === "IPv4" && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return "";
+};
+
 const useDisparo = (): UseDisparo => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { user } = useUser();
+  const userId = user?.id || undefined;
+  const userName =
+    user?.fullName ||
+    user?.username ||
+    user?.emailAddresses?.[0]?.emailAddress ||
+    undefined;
+  const userEmail = user?.emailAddresses?.[0]?.emailAddress || undefined;
+  const userIp = getLocalIp();
 
   const dispararMensagem = async ({
     instance,
@@ -130,11 +172,39 @@ const useDisparo = (): UseDisparo => {
             status: "sucesso",
             mensagem: data?.message || "Enviado",
           });
+          await registrarLogDisparo({
+            type: "text",
+            status: "sucesso",
+            instance,
+            numero,
+            mensagem: mensagem, // ou outra mensagem principal
+            payload: { mensagem, delay, linkPreview, mentionsEveryOne },
+            response: data,
+            error: undefined,
+            userId,
+            userName,
+            userIp,
+            extra: { userEmail },
+          });
         } catch (err: any) {
           results.push({
             numero,
             status: "erro",
             mensagem: err?.response?.data?.message || err?.message || "Erro",
+          });
+          await registrarLogDisparo({
+            type: "text",
+            status: "erro",
+            instance,
+            numero,
+            mensagem: mensagem, // ou outra mensagem principal
+            payload: { mensagem, delay, linkPreview, mentionsEveryOne },
+            response: err?.response?.data,
+            error: err?.response?.data?.message || err?.message,
+            userId,
+            userName,
+            userIp,
+            extra: { userEmail },
           });
         }
       }
@@ -199,11 +269,39 @@ const useDisparo = (): UseDisparo => {
             status: "sucesso",
             mensagem: data?.message || "Enviado",
           });
+          await registrarLogDisparo({
+            type: "image",
+            status: "sucesso",
+            instance,
+            numero,
+            mensagem: data?.message || "Enviado", // ou outra mensagem principal
+            payload: { base64, mimetype, caption, fileName, delay },
+            response: data,
+            error: undefined,
+            userId,
+            userName,
+            userIp,
+            extra: { userEmail },
+          });
         } catch (err: any) {
           results.push({
             numero,
             status: "erro",
             mensagem: err?.response?.data?.message || err?.message || "Erro",
+          });
+          await registrarLogDisparo({
+            type: "image",
+            status: "erro",
+            instance,
+            numero,
+            mensagem: err?.response?.data?.message || err?.message || "Erro", // ou outra mensagem principal
+            payload: { base64, mimetype, caption, fileName, delay },
+            response: err?.response?.data,
+            error: err?.response?.data?.message || err?.message,
+            userId,
+            userName,
+            userIp,
+            extra: { userEmail },
           });
         }
       }
@@ -268,11 +366,39 @@ const useDisparo = (): UseDisparo => {
             status: "sucesso",
             mensagem: data?.message || "Enviado",
           });
+          await registrarLogDisparo({
+            type: "document",
+            status: "sucesso",
+            instance,
+            numero,
+            mensagem: data?.message || "Enviado", // ou outra mensagem principal
+            payload: { base64, mimetype, caption, fileName, delay },
+            response: data,
+            error: undefined,
+            userId,
+            userName,
+            userIp,
+            extra: { userEmail },
+          });
         } catch (err: any) {
           results.push({
             numero,
             status: "erro",
             mensagem: err?.response?.data?.message || err?.message || "Erro",
+          });
+          await registrarLogDisparo({
+            type: "document",
+            status: "erro",
+            instance,
+            numero,
+            mensagem: err?.response?.data?.message || err?.message || "Erro", // ou outra mensagem principal
+            payload: { base64, mimetype, caption, fileName, delay },
+            response: err?.response?.data,
+            error: err?.response?.data?.message || err?.message,
+            userId,
+            userName,
+            userIp,
+            extra: { userEmail },
           });
         }
       }
@@ -327,11 +453,39 @@ const useDisparo = (): UseDisparo => {
             status: "sucesso",
             mensagem: data?.message || "Enviado",
           });
+          await registrarLogDisparo({
+            type: "audio",
+            status: "sucesso",
+            instance,
+            numero,
+            mensagem: data?.message || "Enviado", // ou outra mensagem principal
+            payload: { base64, delay },
+            response: data,
+            error: undefined,
+            userId,
+            userName,
+            userIp,
+            extra: { userEmail },
+          });
         } catch (err: any) {
           results.push({
             numero,
             status: "erro",
             mensagem: err?.response?.data?.message || err?.message || "Erro",
+          });
+          await registrarLogDisparo({
+            type: "audio",
+            status: "erro",
+            instance,
+            numero,
+            mensagem: err?.response?.data?.message || err?.message || "Erro", // ou outra mensagem principal
+            payload: { base64, delay },
+            response: err?.response?.data,
+            error: err?.response?.data?.message || err?.message,
+            userId,
+            userName,
+            userIp,
+            extra: { userEmail },
           });
         }
       }
@@ -392,11 +546,39 @@ const useDisparo = (): UseDisparo => {
             status: "sucesso",
             mensagem: data?.message || "Enviado",
           });
+          await registrarLogDisparo({
+            type: "poll",
+            status: "sucesso",
+            instance,
+            numero,
+            mensagem: data?.message || "Enviado", // ou outra mensagem principal
+            payload: { name, values, selectableCount, delay },
+            response: data,
+            error: undefined,
+            userId,
+            userName,
+            userIp,
+            extra: { userEmail },
+          });
         } catch (err: any) {
           results.push({
             numero,
             status: "erro",
             mensagem: err?.response?.data?.message || err?.message || "Erro",
+          });
+          await registrarLogDisparo({
+            type: "poll",
+            status: "erro",
+            instance,
+            numero,
+            mensagem: err?.response?.data?.message || err?.message || "Erro", // ou outra mensagem principal
+            payload: { name, values, selectableCount, delay },
+            response: err?.response?.data,
+            error: err?.response?.data?.message || err?.message,
+            userId,
+            userName,
+            userIp,
+            extra: { userEmail },
           });
         }
       }
@@ -460,11 +642,39 @@ const useDisparo = (): UseDisparo => {
             status: "sucesso",
             mensagem: data?.message || "Enviado",
           });
+          await registrarLogDisparo({
+            type: "buttons",
+            status: "sucesso",
+            instance,
+            numero,
+            mensagem: data?.message || "Enviado", // ou outra mensagem principal
+            payload: { title, description, footer, buttons, delay },
+            response: data,
+            error: undefined,
+            userId,
+            userName,
+            userIp,
+            extra: { userEmail },
+          });
         } catch (err: any) {
           results.push({
             numero,
             status: "erro",
             mensagem: err?.response?.data?.message || err?.message || "Erro",
+          });
+          await registrarLogDisparo({
+            type: "buttons",
+            status: "erro",
+            instance,
+            numero,
+            mensagem: err?.response?.data?.message || err?.message || "Erro", // ou outra mensagem principal
+            payload: { title, description, footer, buttons, delay },
+            response: err?.response?.data,
+            error: err?.response?.data?.message || err?.message,
+            userId,
+            userName,
+            userIp,
+            extra: { userEmail },
           });
         }
       }
