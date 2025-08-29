@@ -2,6 +2,8 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import {
   ArrowRight,
   CheckCircle,
@@ -24,6 +26,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 export default function LandingPage() {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false)
+  const router = useRouter()
+
+  useEffect(() => {
+    router.push('/dashboard')
+  }, [router])
 
   return (
     <div className="min-h-screen bg-black text-white">
