@@ -6,46 +6,42 @@ export type EvolutionInstance = {
   id: string;
   name: string;
   connectionStatus: string;
-  ownerJid: string;
-  profileName: string;
+  profileName?: string | null;
   profilePicUrl?: string | null;
-  integration?: string;
   number?: string | null;
-  businessId?: string | null;
-  token?: string;
-  clientName?: string;
-  disconnectionReasonCode?: number;
-  disconnectionObject?: string;
-  disconnectionAt?: string;
+  token?: string | null;
+  disconnectionReason?: string | null;
+  lastConnectionAt?: Date | null;
+  lastDisconnectionAt?: Date | null;
   createdAt?: string;
   updatedAt?: string;
-  Chatwoot?: any;
-  Proxy?: any;
-  Rabbitmq?: any;
-  Nats?: any;
-  Sqs?: any;
-  Websocket?: any;
-  Setting?: {
-    id: string;
-    rejectCall: boolean;
-    msgCall: string;
-    groupsIgnore: boolean;
-    alwaysOnline: boolean;
-    readMessages: boolean;
-    readStatus: boolean;
-    syncFullHistory: boolean;
-    wavoipToken: string;
-    createdAt: string;
-    updatedAt: string;
-    instanceId: string;
-  };
   _count?: {
     Message: number;
     Contact: number;
     Chat: number;
   };
   userId?: string;
-  evolution?: any;
+  evolution?: {
+    id: string;
+    ownerJid: string;
+    integration: string;
+    businessId?: string | null;
+    clientName: string;
+    disconnectionReasonCode?: number | null;
+    disconnectionObject?: any;
+    disconnectionAt?: string | null;
+    Setting?: {
+      id: string;
+      rejectCall: boolean;
+      msgCall: string;
+      groupsIgnore: boolean;
+      alwaysOnline: boolean;
+      readMessages: boolean;
+      readStatus: boolean;
+      syncFullHistory: boolean;
+      wavoipToken: string;
+    };
+  };
 };
 
 export function useInstances() {
@@ -55,6 +51,7 @@ export function useInstances() {
       const { data } = await axios.get("/api/instances");
       return Array.isArray(data.instances) ? data.instances : [];
     },
+    refetchInterval: 30000, // Atualiza a cada 30 segundos
   });
 }
 
@@ -92,14 +89,24 @@ export function useLogoutInstance(apikey: string) {
 export const useDeleteInstance = (apikey: string) => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (instanceId: string) => {
-      const response = await api.delete(`/instance/delete/${instanceId}`, {
+    mutationFn: async (instanceIdentifier: string) => {
+      // Se parece ser um UUID, usa como ID, senão usa como nome
+      const isUUID =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          instanceIdentifier
+        );
+
+      const params = isUUID
+        ? `id=${instanceIdentifier}`
+        : `name=${instanceIdentifier}`;
+
+      const { data } = await axios.delete(`/api/instances?${params}`, {
         headers: { apikey },
       });
-      return response.data;
+      return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["instances", apikey] });
+      queryClient.invalidateQueries({ queryKey: ["instances"] });
     },
   });
 };

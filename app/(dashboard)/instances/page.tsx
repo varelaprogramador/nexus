@@ -57,14 +57,16 @@ export default function InstancesPage() {
   // Função para deletar instância
   const handleDelete = (instanceName: string) => {
     deleteInstance.mutate(instanceName, {
-      onSuccess: () => {
+      onSuccess: (data) => {
         setDeleteDialogOpen(false)
         setInstanceToDelete(null)
-        toast.success("Instância excluída com sucesso!")
+        toast.success(data?.message || "Instância excluída com sucesso!", {
+          description: "Removida da Evolution API e do banco local"
+        })
       },
       onError: (error: any) => {
         toast.error("Erro ao excluir instância", {
-          description: error?.message || "Tente novamente."
+          description: error?.response?.data?.error || error?.message || "Tente novamente."
         })
       }
     })
@@ -169,7 +171,7 @@ export default function InstancesPage() {
                       {instance.profilePicUrl ? (
                         <img
                           src={instance.profilePicUrl}
-                          alt={instance.profileName}
+                          alt={instance.profileName || instance.name || 'Foto do perfil'}
                           className="w-10 h-10 rounded-full object-cover border-2 border-background"
                         />
                       ) : (
@@ -179,7 +181,7 @@ export default function InstancesPage() {
                       )}
                       <div>
                         <CardTitle className="text-lg">{instance.profileName || instance.name}</CardTitle>
-                        <CardDescription>{instance.id}</CardDescription>
+                        <CardDescription>{instance.id || instance.name}</CardDescription>
                       </div>
                     </div>
                     <TooltipProvider>
@@ -190,7 +192,7 @@ export default function InstancesPage() {
                               variant="ghost"
                               size="icon"
                               onClick={() => {
-                                setInstanceToDelete(instance.name)
+                                setInstanceToDelete(instance.name || instance.id)
                                 setDeleteDialogOpen(true)
                               }}
                               className="h-8 w-8"
@@ -208,7 +210,7 @@ export default function InstancesPage() {
                               variant="ghost"
                               size="icon"
                               onClick={() => {
-                                setQrInstance(instance.name)
+                                setQrInstance(instance.name || instance.id)
                                 setQrDialogOpen(true)
                               }}
                               className="h-8 w-8"
@@ -229,9 +231,29 @@ export default function InstancesPage() {
                     </Badge>
                     {instance.number && <span className="text-sm text-muted-foreground">• {instance.number}</span>}
                   </div>
-                  {instance.connectionStatus === "close" && instance.disconnectionReasonCode && (
+                  {instance.connectionStatus === "close" && instance.disconnectionReason && (
                     <CardDescription className="text-xs mt-1 text-destructive">
-                      Desconectado: {instance.disconnectionReasonCode}
+                      Desconectado: {instance.disconnectionReason}
+                    </CardDescription>
+                  )}
+                  {instance.evolution?.ownerJid && (
+                    <CardDescription className="text-xs mt-1 text-muted-foreground">
+                      JID: {instance.evolution.ownerJid}
+                    </CardDescription>
+                  )}
+                  {instance.evolution?.clientName && (
+                    <CardDescription className="text-xs mt-1 text-muted-foreground">
+                      Cliente: {instance.evolution.clientName}
+                    </CardDescription>
+                  )}
+                  {instance.lastConnectionAt && (
+                    <CardDescription className="text-xs mt-1 text-muted-foreground">
+                      Última conexão: {new Date(instance.lastConnectionAt).toLocaleString('pt-BR')}
+                    </CardDescription>
+                  )}
+                  {instance.lastDisconnectionAt && instance.connectionStatus === "close" && (
+                    <CardDescription className="text-xs mt-1 text-muted-foreground">
+                      Última desconexão: {new Date(instance.lastDisconnectionAt).toLocaleString('pt-BR')}
                     </CardDescription>
                   )}
                 </CardHeader>
@@ -277,6 +299,38 @@ export default function InstancesPage() {
                       </div>
                     </div>
                   )}
+
+                  {instance.evolution?.Setting && (
+                    <div className="mt-4 text-sm">
+                      <div className="font-medium mb-2">Configurações:</div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Rejeitar chamadas:</span>
+                          <Badge variant={instance.evolution.Setting.rejectCall ? "destructive" : "default"}>
+                            {instance.evolution.Setting.rejectCall ? "Sim" : "Não"}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Sempre online:</span>
+                          <Badge variant={instance.evolution.Setting.alwaysOnline ? "default" : "secondary"}>
+                            {instance.evolution.Setting.alwaysOnline ? "Sim" : "Não"}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Ler mensagens:</span>
+                          <Badge variant={instance.evolution.Setting.readMessages ? "default" : "secondary"}>
+                            {instance.evolution.Setting.readMessages ? "Sim" : "Não"}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Ler status:</span>
+                          <Badge variant={instance.evolution.Setting.readStatus ? "default" : "secondary"}>
+                            {instance.evolution.Setting.readStatus ? "Sim" : "Não"}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -289,8 +343,14 @@ export default function InstancesPage() {
             <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
             <AlertDialogDescription>
               Tem certeza que deseja excluir a instância{" "}
-              <span className="font-semibold">{instanceToDelete}</span>? Esta ação
-              não pode ser desfeita.
+              <span className="font-semibold">{instanceToDelete}</span>?
+              <br /><br />
+              <strong>Esta ação irá:</strong>
+              <br />• Deletar a instância da Evolution API
+              <br />• Remover do banco de dados local
+              <br />• Desconectar o WhatsApp associado
+              <br /><br />
+              <span className="text-destructive font-medium">Esta ação não pode ser desfeita.</span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -299,7 +359,7 @@ export default function InstancesPage() {
               onClick={() => instanceToDelete && handleDelete(instanceToDelete)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Excluir
+              Excluir Instância
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -307,14 +367,26 @@ export default function InstancesPage() {
       <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>QR Code para conexão</DialogTitle>
+            <div className="flex items-center justify-between">
+              <DialogTitle>QR Code para conexão</DialogTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => qrCodeQuery.refetch()}
+                disabled={qrCodeQuery.isLoading}
+                className="h-8 w-8 p-0"
+              >
+                <RefreshCw className={`h-4 w-4 ${qrCodeQuery.isLoading ? "animate-spin" : ""}`} />
+              </Button>
+            </div>
           </DialogHeader>
           {qrCodeQuery.isLoading ? (
             <div className="flex justify-center items-center h-48">Carregando QR Code...</div>
           ) : qrCodeQuery.data?.base64 ? (
             <div className="flex flex-col items-center">
-              <img src={qrCodeQuery.data.qrCode} alt="QR Code" className="w-48 h-48" />
+              <img src={qrCodeQuery.data.base64} alt="QR Code" className="w-48 h-48" />
               <div className="text-xs text-muted-foreground mt-2">Escaneie este código com seu WhatsApp</div>
+              <div className="text-xs text-muted-foreground mt-1">Clique no botão de refresh para gerar um novo código</div>
             </div>
           ) : (
             <div className="text-center text-red-500">QR Code não disponível.</div>

@@ -16,6 +16,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import * as XLSX from 'xlsx'
 import { saveAs } from 'file-saver'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { FixedSizeList as List } from 'react-window'
+import InfiniteLoader from 'react-window-infinite-loader'
+import { useCallback, useEffect } from 'react'
 
 
 
@@ -86,98 +89,141 @@ type Group = {
 
 const COLUMN_WIDTHS = [400, 200, 180] // px para cada coluna
 
-const VirtualizedTableBody = ({ groups, setSelectedGroup, setShowMembers, tableContainerRef }: {
-  groups: any[],
-  setSelectedGroup: (g: any) => void,
-  setShowMembers: (b: boolean) => void,
-  tableContainerRef: React.MutableRefObject<HTMLDivElement | null> | any
+const InfiniteGroupsList = ({
+  groups,
+  hasNextPage,
+  loadMoreGroups,
+  isLoading,
+  setSelectedGroup,
+  setShowMembers
+}: {
+  groups: any[];
+  hasNextPage: boolean;
+  loadMoreGroups: () => void;
+  isLoading: boolean;
+  setSelectedGroup: (g: any) => void;
+  setShowMembers: (b: boolean) => void;
 }) => {
-  const rowVirtualizer = useVirtualizer({
-    count: groups.length,
-    getScrollElement: () => tableContainerRef.current,
-    estimateSize: () => 56, // altura média de uma linha
-    overscan: 10,
-  })
-  return (
-    <TableBody style={{
-      display: 'grid',
-      height: `${rowVirtualizer.getTotalSize()}px`,
-      position: 'relative',
-    }}>
-      {rowVirtualizer.getVirtualItems().map(virtualRow => {
-        const group = groups[virtualRow.index]
-        return (
-          <TableRow
-            key={group.remoteJid || group.id}
-            style={{
-              display: 'flex',
-              position: 'absolute',
-              transform: `translateY(${virtualRow.start}px)`,
-              width: '100%',
-            }}
-            className="border-zinc-700/30 hover:bg-zinc-800/20 transition-colors"
-          >
-            <TableCell className="font-medium" style={{ width: COLUMN_WIDTHS[0], minWidth: COLUMN_WIDTHS[0], maxWidth: COLUMN_WIDTHS[0] }}>
-              <div className="flex items-center space-x-3 min-w-0">
-                {group.pictureUrl && typeof group.pictureUrl === 'string' && group.pictureUrl.startsWith('http') ? (
-                  <img
-                    src={group.pictureUrl}
-                    alt="Foto do grupo"
-                    className="w-10 h-10 rounded-lg object-cover bg-zinc-800 border border-zinc-700"
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                  />
-                ) : (
-                  <div className="w-10 h-10 bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 rounded-lg flex items-center justify-center">
-                    <Users className="w-5 h-5 text-emerald-400" />
-                  </div>
-                )}
-                <div className="min-w-0">
-                  <p className="text-white font-medium truncate">{group.pushName || group.subject || group.remoteJid}</p>
-                  <p className="text-zinc-400 text-xs truncate">ID: {group.remoteJid || group.id}</p>
+  const itemCount = hasNextPage ? groups.length + 1 : groups.length
+
+  const isItemLoaded = useCallback((index: number) => {
+    return index < groups.length
+  }, [groups.length])
+
+  const GroupRow = ({ index, style }: { index: number; style: React.CSSProperties }) => {
+    const isLoading = index >= groups.length
+
+    if (isLoading) {
+      return (
+        <div style={style} className="border-zinc-700/30 p-4">
+          <div className="flex items-center space-x-4">
+            <Skeleton className="h-10 w-10 rounded-lg" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    const group = groups[index]
+    return (
+      <div style={style} className="border-zinc-700/30 hover:bg-zinc-800/20 transition-colors p-4">
+        <div className="grid grid-cols-3 gap-4 items-center">
+          <div className="font-medium">
+            <div className="flex items-center space-x-3 min-w-0">
+              {group.pictureUrl && typeof group.pictureUrl === 'string' && group.pictureUrl.startsWith('http') ? (
+                <img
+                  src={group.pictureUrl}
+                  alt="Foto do grupo"
+                  className="w-10 h-10 rounded-lg object-cover bg-zinc-800 border border-zinc-700"
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
+              ) : (
+                <div className="w-10 h-10 bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 rounded-lg flex items-center justify-center">
+                  <Users className="w-5 h-5 text-emerald-400" />
                 </div>
+              )}
+              <div className="min-w-0">
+                <p className="text-white font-medium truncate">{group.pushName || group.subject || group.remoteJid}</p>
+                <p className="text-zinc-400 text-xs truncate">ID: {group.remoteJid || group.id}</p>
               </div>
-            </TableCell>
-            <TableCell className="text-zinc-300" style={{ width: COLUMN_WIDTHS[3], minWidth: COLUMN_WIDTHS[3], maxWidth: COLUMN_WIDTHS[3] }}>
-              {group.creation ? new Date(group.creation * 1000).toLocaleDateString("pt-BR") : (group.createdAt ? new Date(group.createdAt).toLocaleDateString("pt-BR") : '-')}
-            </TableCell>
-            <TableCell style={{ width: COLUMN_WIDTHS[4], minWidth: COLUMN_WIDTHS[4], maxWidth: COLUMN_WIDTHS[4] }}>
-              <div className="flex space-x-1">
-                <Button size="sm" variant="ghost" className="w-8 h-8 p-0 text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10"
-                  onClick={() => { setSelectedGroup(group); setShowMembers(false); }}>
-                  <Eye className="w-4 h-4" />
-                </Button>
-                <Button size="sm" variant="ghost" className="w-8 h-8 p-0 text-zinc-400 hover:text-blue-400 hover:bg-blue-500/10">
-                  <Edit className="w-4 h-4" />
-                </Button>
-                <Button size="sm" variant="ghost" className="w-8 h-8 p-0 text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10">
-                  <Send className="w-4 h-4" />
-                </Button>
-                <Button size="sm" variant="ghost" className="w-8 h-8 p-0 text-zinc-400 hover:text-red-400 hover:bg-red-500/10">
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            </TableCell>
-          </TableRow>
-        )
-      })}
-    </TableBody>
+            </div>
+          </div>
+          <div className="text-zinc-300">
+            {group.creation ? new Date(group.creation * 1000).toLocaleDateString("pt-BR") : (group.createdAt ? new Date(group.createdAt).toLocaleDateString("pt-BR") : '-')}
+          </div>
+          <div>
+            <div className="flex space-x-1">
+              <Button size="sm" variant="ghost" className="w-8 h-8 p-0 text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10"
+                onClick={() => { setSelectedGroup(group); setShowMembers(false); }}>
+                <Eye className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="ghost" className="w-8 h-8 p-0 text-zinc-400 hover:text-blue-400 hover:bg-blue-500/10">
+                <Edit className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="ghost" className="w-8 h-8 p-0 text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10">
+                <Send className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="ghost" className="w-8 h-8 p-0 text-zinc-400 hover:text-red-400 hover:bg-red-500/10">
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ height: '600px' }}>
+      <div className="grid grid-cols-3 gap-4 p-4 border-b border-zinc-700/50 bg-zinc-900/50">
+        <div className="text-zinc-300 font-medium">Nome do Grupo</div>
+        <div className="text-zinc-300 font-medium">Criado em</div>
+        <div className="text-zinc-300 font-medium">Ações</div>
+      </div>
+      <InfiniteLoader
+        isItemLoaded={isItemLoaded}
+        itemCount={itemCount}
+        loadMoreItems={loadMoreGroups}
+      >
+        {({ onItemsRendered, ref }) => (
+          <List
+            ref={ref}
+            height={550}
+            width="100%"
+            itemCount={itemCount}
+            itemSize={72}
+            onItemsRendered={onItemsRendered}
+          >
+            {GroupRow}
+          </List>
+        )}
+      </InfiniteLoader>
+    </div>
   )
 }
 
-// Novo hook para buscar grupos
-const useGroups = (instanceName: string, apikey: string, enabled = true) => {
+// Novo hook para buscar grupos com paginação
+const useGroups = (instanceName: string, apikey: string, enabled = true, limit = 50, offset = 0) => {
   return useQuery({
-    queryKey: ['groups', instanceName, apikey],
+    queryKey: ['groups', instanceName, apikey, limit, offset],
     queryFn: async () => {
       const { data } = await api.post(
         `/chat/findContacts/${instanceName}`,
-        { where: {} },
+        { where: {}, limit, offset },
         {
           headers: { apikey, 'Content-Type': 'application/json' }
         }
       )
       // Filtrar apenas grupos: id começando com '120'
-      return Array.isArray(data) ? data.filter((item: any) => item.remoteJid && item.remoteJid.startsWith('120')) : []
+      const groups = Array.isArray(data) ? data.filter((item: any) => item.remoteJid && item.remoteJid.startsWith('120')) : []
+      return {
+        groups,
+        hasNextPage: Array.isArray(data) && data.length === limit,
+        totalCount: groups.length
+      }
     },
     enabled: enabled && !!instanceName
   })
@@ -187,19 +233,48 @@ export default function GroupsPage() {
   // Buscar instâncias disponíveis
   const apikey = process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || ""
   const { data: instances = [] } = useInstances()
-  // Estado para instância ativa
+  // Estados para paginação
   const [activeInstance, setActiveInstance] = useState<string>(instances[0]?.name || "")
-  const shouldFetch = !!activeInstance
-  // Corrigido: buscar grupos com useGroups
-  const { data: groups = [], isLoading } = useGroups(activeInstance, apikey, shouldFetch)
+  const [allGroups, setAllGroups] = useState<any[]>([])
+  const [page, setPage] = useState(0)
+  const [hasNextPage, setHasNextPage] = useState(true)
   const [search, setSearch] = useState("")
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null)
   const [showMembers, setShowMembers] = useState(false)
+
+  const shouldFetch = !!activeInstance
+  const { data: groupsData, isLoading } = useGroups(activeInstance, apikey, shouldFetch, 50, page * 50)
   const membersQuery = useGroupMembers(activeInstance, selectedGroup?.remoteJid || '', apikey)
-  const tableContainerRef = useState<null | HTMLDivElement>(null)
+
+  // Gerenciar carregamento de grupos
+  useEffect(() => {
+    if (groupsData?.groups) {
+      if (page === 0) {
+        setAllGroups(groupsData.groups)
+      } else {
+        setAllGroups(prev => [...prev, ...groupsData.groups])
+      }
+      setHasNextPage(groupsData.hasNextPage)
+    }
+  }, [groupsData, page])
+
+  useEffect(() => {
+    // Reset quando trocar instância
+    if (activeInstance) {
+      setAllGroups([])
+      setPage(0)
+      setHasNextPage(true)
+    }
+  }, [activeInstance])
+
+  const loadMoreGroups = useCallback(() => {
+    if (hasNextPage && !isLoading) {
+      setPage(prev => prev + 1)
+    }
+  }, [hasNextPage, isLoading])
 
   // Filtro seguro para grupos
-  const filteredGroups = (groups as any[]).filter((group: any) => {
+  const filteredGroups = allGroups.filter((group: any) => {
     const name = group.pushName || group.subject || group.remoteJid || ''
     return name.toLowerCase().includes(search.toLowerCase())
   })
@@ -280,31 +355,14 @@ export default function GroupsPage() {
                 <p className="mt-2">Crie ou sincronize grupos para começar.</p>
               </div>
             ) : (
-              <div
-                ref={tableContainerRef as any}
-                className="p-4"
-                style={{
-                  height: '600px',
-                  overflow: 'auto',
-                  position: 'relative',
-                }}
-              >
-                <Table /* Remover qualquer estilo de overflow do Table */>
-                  <TableHeader>
-                    <TableRow className="border-zinc-700/50 hover:bg-zinc-800/30">
-                      <TableHead className="text-zinc-300 font-medium" style={{ width: COLUMN_WIDTHS[0], minWidth: COLUMN_WIDTHS[0], maxWidth: COLUMN_WIDTHS[0] }}>Nome do Grupo</TableHead>
-                      <TableHead className="text-zinc-300 font-medium" style={{ width: COLUMN_WIDTHS[3], minWidth: COLUMN_WIDTHS[3], maxWidth: COLUMN_WIDTHS[3] }}>Criado em</TableHead>
-                      <TableHead className="text-zinc-300 font-medium" style={{ width: COLUMN_WIDTHS[4], minWidth: COLUMN_WIDTHS[4], maxWidth: COLUMN_WIDTHS[4] }}>Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <VirtualizedTableBody
-                    groups={filteredGroups}
-                    setSelectedGroup={setSelectedGroup}
-                    setShowMembers={setShowMembers}
-                    tableContainerRef={tableContainerRef}
-                  />
-                </Table>
-              </div>
+              <InfiniteGroupsList
+                groups={filteredGroups}
+                hasNextPage={!search && hasNextPage}
+                loadMoreGroups={loadMoreGroups}
+                isLoading={isLoading}
+                setSelectedGroup={setSelectedGroup}
+                setShowMembers={setShowMembers}
+              />
             )}
           </CardContent>
         </Card>

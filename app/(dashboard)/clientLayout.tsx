@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
+import { useUser, UserButton } from "@clerk/nextjs"
 
 
 const inter = Inter({ subsets: ["latin"] })
@@ -71,6 +72,7 @@ export const useAppContext = () => React.useContext(AppContext)
 
 function AppSidebar() {
   const [currentPage, setCurrentPage] = React.useState<Page>("dashboard")
+  const { user, isLoaded } = useUser()
 
 
   React.useEffect(() => {
@@ -122,7 +124,7 @@ function AppSidebar() {
           <div className="flex items-center justify-between">
             <span className="text-zinc-400 text-xs">Última atualização:</span>
             <Badge variant="outline" className="border-emerald-500/50 text-emerald-400 bg-emerald-500/10 text-xs">
-
+              {formatTime(new Date())}
             </Badge>
           </div>
         </div>
@@ -153,21 +155,41 @@ function AppSidebar() {
       </div>
 
       <div className="p-4 border-t border-zinc-800/50">
-        <div className="flex items-center space-x-3 p-3 rounded-lg bg-zinc-900/50 border border-zinc-800/50">
-          <Avatar className="w-8 h-8">
-            <AvatarImage src="/placeholder.svg?height=32&width=32" />
-            <AvatarFallback className="bg-gradient-to-br from-emerald-400 to-cyan-400 text-black text-xs font-bold">
-              US
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="text-white font-medium text-sm truncate">Admin User</p>
-            <p className="text-zinc-400 text-xs">admin@nexus.com</p>
+        {isLoaded && user ? (
+          <div className="flex items-center space-x-3 p-3 rounded-lg bg-zinc-900/50 border border-zinc-800/50">
+            <Avatar className="w-8 h-8">
+              <AvatarImage src={user.imageUrl} />
+              <AvatarFallback className="bg-gradient-to-br from-emerald-400 to-cyan-400 text-black text-xs font-bold">
+                {user.firstName?.charAt(0) || user.emailAddresses[0]?.emailAddress.charAt(0) || "U"}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-medium text-sm truncate">
+                {user.fullName || user.firstName || "Usuário"}
+              </p>
+              <p className="text-zinc-400 text-xs truncate">
+                {user.primaryEmailAddress?.emailAddress || "email@exemplo.com"}
+              </p>
+            </div>
+            <UserButton
+              appearance={{
+                elements: {
+                  avatarBox: "w-8 h-8",
+                  userButtonPopoverCard: "bg-zinc-900 border border-zinc-800",
+                  userButtonPopoverActionButton: "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                }
+              }}
+            />
           </div>
-          <Button size="sm" variant="ghost" className="w-8 h-8 p-0 text-zinc-400 hover:text-white">
-            <Settings className="w-4 h-4" />
-          </Button>
-        </div>
+        ) : (
+          <div className="flex items-center space-x-3 p-3 rounded-lg bg-zinc-900/50 border border-zinc-800/50">
+            <div className="w-8 h-8 bg-zinc-800 rounded-full animate-pulse" />
+            <div className="flex-1 space-y-2">
+              <div className="h-3 bg-zinc-800 rounded animate-pulse" />
+              <div className="h-2 bg-zinc-800 rounded animate-pulse w-2/3" />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -220,9 +242,15 @@ export default function ClientLayout({
               <Button size="sm" variant="ghost" className="text-zinc-400 hover:text-white hover:bg-zinc-800/50">
                 <Bell className="w-4 h-4" />
               </Button>
-              <Button size="sm" variant="ghost" className="text-zinc-400 hover:text-white hover:bg-zinc-800/50">
-                <User className="w-4 h-4" />
-              </Button>
+              <UserButton
+                appearance={{
+                  elements: {
+                    avatarBox: "w-8 h-8",
+                    userButtonPopoverCard: "bg-zinc-900 border border-zinc-800",
+                    userButtonPopoverActionButton: "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                  }
+                }}
+              />
             </div>
           </header>
           {/* Conteúdo scrollável */}

@@ -11,28 +11,34 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { useInstances } from '@/hooks/use-instances'
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useRef, useCallback } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from 'sonner'
 import * as XLSX from 'xlsx'
 import { saveAs } from 'file-saver'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useRef } from 'react'
+import { FixedSizeList as List } from 'react-window'
+import InfiniteLoader from 'react-window-infinite-loader'
 
-export function useContacts(instanceName: string, apikey: string, enabled = true) {
+export function useContacts(instanceName: string, apikey: string, enabled = true, limit = 50, offset = 0) {
   return useQuery({
-    queryKey: ['contacts', instanceName, apikey],
+    queryKey: ['contacts', instanceName, apikey, limit, offset],
     queryFn: async () => {
       const { data } = await api.post(
         `/chat/findContacts/${instanceName}`,
-        { where: {} },
+        { where: {}, limit, offset },
         {
           headers: { apikey, 'Content-Type': 'application/json' }
         }
       )
-      return Array.isArray(data) ? data : []
+      return {
+        contacts: Array.isArray(data) ? data : [],
+        hasNextPage: Array.isArray(data) && data.length === limit,
+        totalCount: Array.isArray(data) ? data.length : 0
+      }
     },
-    enabled: enabled && !!instanceName
+    enabled: enabled && !!instanceName,
+    staleTime: 1000 * 60 // 1 minuto para manter dados "frescos"
   })
 }
 
@@ -57,94 +63,122 @@ const COLUMN_WIDTHS = [180, 140, 130, 130, 60, 90, 120] // px para cada coluna
 
 const cellStyle = (i: number) => ({ width: COLUMN_WIDTHS[i], minWidth: COLUMN_WIDTHS[i], maxWidth: COLUMN_WIDTHS[i], padding: '8px 12px' })
 
-const VirtualizedContactsTableBody = ({ contacts }: { contacts: any[] }) => {
-  const tableContainerRef = useRef<HTMLDivElement | null>(null)
-  const rowVirtualizer = useVirtualizer({
-    count: contacts.length,
-    getScrollElement: () => tableContainerRef.current,
-    estimateSize: () => 48,
-    overscan: 10,
-  })
+const InfiniteContactsList = ({
+  contacts,
+  hasNextPage,
+  loadMoreContacts,
+  isLoading
+}: {
+  contacts: any[];
+  hasNextPage: boolean;
+  loadMoreContacts: () => void;
+  isLoading: boolean;
+}) => {
+  const itemCount = hasNextPage ? contacts.length + 1 : contacts.length
+
+  const isItemLoaded = useCallback((index: number) => {
+    return index < contacts.length
+  }, [contacts.length])
+
+  const ContactRow = ({ index, style }: { index: number; style: React.CSSProperties }) => {
+    const isLoading = index >= contacts.length
+
+    if (isLoading) {
+      return (
+        <div style={style} className="border-zinc-700/30 p-4">
+          <div className="flex items-center space-x-4">
+            <Skeleton className="h-8 w-8 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    const contact = contacts[index]
+    return (
+      <div style={style} className="border-zinc-700/30 hover:bg-zinc-800/20 transition-colors p-4">
+        <div className="grid grid-cols-7 gap-4 items-center">
+          <div style={cellStyle(0)}>
+            <span className="text-white font-medium truncate">
+              {contact.pushName || formatPhone(contact.remoteJid)}
+            </span>
+          </div>
+          <div className="text-zinc-300 font-mono" style={cellStyle(1)}>
+            {formatPhone(contact.remoteJid)}
+          </div>
+          <div className="text-zinc-300" style={cellStyle(2)}>
+            {contact.createdAt ? new Date(contact.createdAt).toLocaleString('pt-BR') : '-'}
+          </div>
+          <div className="text-zinc-300" style={cellStyle(3)}>
+            {contact.updatedAt ? new Date(contact.updatedAt).toLocaleString('pt-BR') : '-'}
+          </div>
+          <div style={cellStyle(4)}>
+            {contact.profilePicUrl ? (
+              <Avatar className="w-8 h-8">
+                <AvatarImage src={contact.profilePicUrl} />
+                <AvatarFallback className="bg-zinc-700 text-white">?</AvatarFallback>
+              </Avatar>
+            ) : (
+              <Avatar className="w-8 h-8">
+                <AvatarFallback className="bg-zinc-700 text-white">?</AvatarFallback>
+              </Avatar>
+            )}
+          </div>
+          <div style={cellStyle(5)}>
+            <Badge variant="default" className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+              Ativo
+            </Badge>
+          </div>
+          <div style={cellStyle(6)}>
+            <div className="flex space-x-1">
+              <Button size="sm" variant="ghost" className="w-8 h-8 p-0 text-zinc-400 hover:text-blue-400 hover:bg-blue-500/10">
+                <Edit className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="ghost" className="w-8 h-8 p-0 text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10">
+                <MessageSquare className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="ghost" className="w-8 h-8 p-0 text-zinc-400 hover:text-red-400 hover:bg-red-500/10">
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div
-      ref={tableContainerRef}
-      style={{
-        height: '420px',
-        overflow: 'auto',
-        position: 'relative',
-      }}
-    >
-      <Table>
-        <TableHeader>
-          <TableRow className="border-zinc-700/50">
-            <TableHead className="text-zinc-300 font-medium" style={cellStyle(0)}>Contato</TableHead>
-            <TableHead className="text-zinc-300 font-medium" style={cellStyle(1)}>Número</TableHead>
-            <TableHead className="text-zinc-300 font-medium" style={cellStyle(2)}>Criado em</TableHead>
-            <TableHead className="text-zinc-300 font-medium" style={cellStyle(3)}>Atualizado em</TableHead>
-            <TableHead className="text-zinc-300 font-medium" style={cellStyle(4)}>Foto</TableHead>
-            <TableHead className="text-zinc-300 font-medium" style={cellStyle(5)}>Status</TableHead>
-            <TableHead className="text-zinc-300 font-medium" style={cellStyle(6)}>Ações</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody style={{
-          display: 'grid',
-          height: `${rowVirtualizer.getTotalSize()}px`,
-          position: 'relative',
-        }}>
-          {rowVirtualizer.getVirtualItems().map(virtualRow => {
-            const contact = contacts[virtualRow.index]
-            return (
-              <TableRow
-                key={contact.id}
-                style={{
-                  display: 'flex',
-                  position: 'absolute',
-                  transform: `translateY(${virtualRow.start}px)`,
-                  width: '100%',
-                }}
-                className="border-zinc-700/30 hover:bg-zinc-800/20 transition-colors"
-              >
-                <TableCell style={cellStyle(0)}>
-                  <span className="text-white font-medium truncate">{contact.pushName || formatPhone(contact.remoteJid)}</span>
-                </TableCell>
-                <TableCell className="text-zinc-300 font-mono" style={cellStyle(1)}>{formatPhone(contact.remoteJid)}</TableCell>
-                <TableCell className="text-zinc-300" style={cellStyle(2)}>{contact.createdAt ? new Date(contact.createdAt).toLocaleString('pt-BR') : '-'}</TableCell>
-                <TableCell className="text-zinc-300" style={cellStyle(3)}>{contact.updatedAt ? new Date(contact.updatedAt).toLocaleString('pt-BR') : '-'}</TableCell>
-                <TableCell style={cellStyle(4)}>
-                  {contact.profilePicUrl ? (
-                    <Avatar className="w-8 h-8">
-                      <AvatarImage src={contact.profilePicUrl} />
-                      <AvatarFallback className="bg-zinc-700 text-white">?</AvatarFallback>
-                    </Avatar>
-                  ) : (
-                    <Avatar className="w-8 h-8">
-                      <AvatarFallback className="bg-zinc-700 text-white">?</AvatarFallback>
-                    </Avatar>
-                  )}
-                </TableCell>
-                <TableCell style={cellStyle(5)}>
-                  <Badge variant="default" className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
-                    Ativo
-                  </Badge>
-                </TableCell>
-                <TableCell style={cellStyle(6)}>
-                  <div className="flex space-x-1">
-                    <Button size="sm" variant="ghost" className="w-8 h-8 p-0 text-zinc-400 hover:text-blue-400 hover:bg-blue-500/10">
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                    <Button size="sm" variant="ghost" className="w-8 h-8 p-0 text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10">
-                      <MessageSquare className="w-4 h-4" />
-                    </Button>
-                    <Button size="sm" variant="ghost" className="w-8 h-8 p-0 text-zinc-400 hover:text-red-400 hover:bg-red-500/10">
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            )
-          })}
-        </TableBody>
-      </Table>
+    <div style={{ height: '420px' }}>
+      <div className="grid grid-cols-7 gap-4 p-4 border-b border-zinc-700/50 bg-zinc-900/50">
+        <div className="text-zinc-300 font-medium">Contato</div>
+        <div className="text-zinc-300 font-medium">Número</div>
+        <div className="text-zinc-300 font-medium">Criado em</div>
+        <div className="text-zinc-300 font-medium">Atualizado em</div>
+        <div className="text-zinc-300 font-medium">Foto</div>
+        <div className="text-zinc-300 font-medium">Status</div>
+        <div className="text-zinc-300 font-medium">Ações</div>
+      </div>
+      <InfiniteLoader
+        isItemLoaded={isItemLoaded}
+        itemCount={itemCount}
+        loadMoreItems={loadMoreContacts}
+      >
+        {({ onItemsRendered, ref }) => (
+          <List
+            ref={ref}
+            height={370}
+            width="100%"
+            itemCount={itemCount}
+            itemSize={60}
+            onItemsRendered={onItemsRendered}
+          >
+            {ContactRow}
+          </List>
+        )}
+      </InfiniteLoader>
     </div>
   )
 }
@@ -153,18 +187,51 @@ export default function ContactsPage() {
   const apikey = process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || ""
   const { data: instances = [] } = useInstances()
   const [activeInstance, setActiveInstance] = useState<string>("")
-  const shouldFetch = !!activeInstance
-  const { data: contacts = [], isLoading, isError, error } = useContacts(activeInstance, apikey, shouldFetch)
+  const [allContacts, setAllContacts] = useState<any[]>([])
+  const [page, setPage] = useState(0)
+  const [hasNextPage, setHasNextPage] = useState(true)
   const [search, setSearch] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
+
+  const shouldFetch = !!activeInstance
+  const { data: contactsData, isLoading, isError, error } = useContacts(activeInstance, apikey, shouldFetch, 50, page * 50)
+
   useEffect(() => {
     const handler = setTimeout(() => setDebouncedSearch(search), 300)
     return () => clearTimeout(handler)
   }, [search])
 
+  useEffect(() => {
+    if (contactsData?.contacts) {
+      if (page === 0) {
+        setAllContacts(contactsData.contacts)
+      } else {
+        setAllContacts(prev => [...prev, ...contactsData.contacts])
+      }
+      setHasNextPage(contactsData.hasNextPage)
+    }
+  }, [contactsData, page])
+
+  useEffect(() => {
+    // Reset quando trocar instância
+    if (activeInstance) {
+      setAllContacts([])
+      setPage(0)
+      setHasNextPage(true)
+    }
+  }, [activeInstance])
+
+  const loadMoreContacts = useCallback(() => {
+    if (hasNextPage && !isLoading) {
+      setPage(prev => prev + 1)
+    }
+  }, [hasNextPage, isLoading])
+
   const filteredContacts = useMemo(() => {
+    if (!debouncedSearch) return allContacts
+
     const searchLower = debouncedSearch.toLowerCase().replace(/\D/g, '')
-    return contacts.filter((contact: any) => {
+    return allContacts.filter((contact: any) => {
       const name = (contact.pushName || '').toLowerCase()
       const remoteJid = (contact.remoteJid || '').toLowerCase()
       const formatted = formatPhone(contact.remoteJid).replace(/\D/g, '')
@@ -174,7 +241,7 @@ export default function ContactsPage() {
         remoteJid.includes(searchLower)
       )
     })
-  }, [contacts, debouncedSearch])
+  }, [allContacts, debouncedSearch])
 
   function exportContactsToXLS(contacts: any[]) {
     const data = contacts.map((c) => ({
@@ -234,7 +301,7 @@ export default function ContactsPage() {
         </div>
 
         <div className="flex items-center space-x-4">
-          {contacts.length > 0 && (
+          {allContacts.length > 0 && (
             <>
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-zinc-400 w-4 h-4" />
@@ -294,7 +361,7 @@ export default function ContactsPage() {
                 <h3 className="text-lg font-medium">Erro ao buscar contatos</h3>
                 <p className="mt-2">{error?.message || 'Ocorreu um erro ao buscar os contatos.'}</p>
               </div>
-            ) : contacts.length === 0 ? (
+            ) : allContacts.length === 0 ? (
               <div className="text-center py-16 text-muted-foreground">
                 <div className="mx-auto w-24 h-24 rounded-full bg-muted flex items-center justify-center mb-4">
                   <MessageSquare className="h-10 w-10 text-muted-foreground/50" />
@@ -303,7 +370,12 @@ export default function ContactsPage() {
                 <p className="mt-2">Adicione ou sincronize contatos para começar.</p>
               </div>
             ) : (
-              <VirtualizedContactsTableBody contacts={filteredContacts} />
+              <InfiniteContactsList
+                contacts={filteredContacts}
+                hasNextPage={!debouncedSearch && hasNextPage}
+                loadMoreContacts={loadMoreContacts}
+                isLoading={isLoading}
+              />
             )}
           </CardContent>
         </Card>

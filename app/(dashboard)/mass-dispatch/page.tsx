@@ -11,8 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useContacts } from "../contacts/page"
+import { FixedSizeList as List } from 'react-window'
+import InfiniteLoader from 'react-window-infinite-loader'
 
 import { useInstances } from "@/hooks/use-instances"
 import useDisparo from '@/hooks/use-disparo'
@@ -685,18 +687,46 @@ function ContactSelector({
 }) {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedGroup, setSelectedGroup] = useState<string>("all")
+  const [allContacts, setAllContacts] = useState<any[]>([])
+  const [page, setPage] = useState(0)
+  const [hasNextPage, setHasNextPage] = useState(true)
 
-  // Buscar contatos reais da instância
-  const { data: contacts = [], isLoading } = useContacts(instanceName, apikey, true)
+  // Buscar contatos com paginação
+  const { data: contactsData, isLoading } = useContacts(instanceName, apikey, true, 100, page * 100)
 
-  const groups: string[] = Array.from(new Set(contacts.map((c) => c.group).filter((g): g is string => Boolean(g))))
+  useEffect(() => {
+    if (contactsData?.contacts) {
+      if (page === 0) {
+        setAllContacts(contactsData.contacts)
+      } else {
+        setAllContacts(prev => [...prev, ...contactsData.contacts])
+      }
+      setHasNextPage(contactsData.hasNextPage)
+    }
+  }, [contactsData, page])
 
-  const filteredContacts = contacts.filter((contact) => {
+  useEffect(() => {
+    // Reset quando abrir o dialog
+    if (open && instanceName) {
+      setAllContacts([])
+      setPage(0)
+      setHasNextPage(true)
+    }
+  }, [open, instanceName])
+
+  const loadMoreContacts = useCallback(() => {
+    if (hasNextPage && !isLoading) {
+      setPage(prev => prev + 1)
+    }
+  }, [hasNextPage, isLoading])
+
+  const groups: string[] = Array.from(new Set(allContacts.map((c) => c.group).filter((g): g is string => Boolean(g))))
+
+  const filteredContacts = allContacts.filter((contact) => {
     const name = (contact.pushName || '').toLowerCase()
     const phone = (contact.remoteJid || '').toLowerCase()
     const matchesSearch =
       name.includes(searchTerm.toLowerCase()) || phone.includes(searchTerm)
-    // Não há grupo, então sempre true
     return matchesSearch
   })
 
@@ -784,52 +814,85 @@ function ContactSelector({
               </div>
             </div>
 
-            <div className="max-h-96 overflow-y-auto space-y-2">
-              {filteredContacts.map((contact) => {
-                const isSelected = selected.some((c) => c.id === contact.id)
-                return (
-                  <div
-                    key={String(contact.id)}
-                    className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${isSelected
-                      ? "bg-emerald-500/10 border border-emerald-500/50"
-                      : "bg-zinc-800/50 hover:bg-zinc-700/50"
-                      }`}
-                    onClick={() => toggleContact({
-                      id: contact.id,
-                      name: contact.pushName || '',
-                      phone: contact.remoteJid || '',
-                      avatar: contact.profilePicUrl || (contact.pushName ? contact.pushName.slice(0, 2).toUpperCase() : "?"),
-                    })}
+            <div className="h-96">
+              <InfiniteLoader
+                isItemLoaded={(index) => index < filteredContacts.length}
+                itemCount={!searchTerm && hasNextPage ? filteredContacts.length + 1 : filteredContacts.length}
+                loadMoreItems={loadMoreContacts}
+              >
+                {({ onItemsRendered, ref }) => (
+                  <List
+                    ref={ref}
+                    width="100%"
+                    height={384}
+                    itemCount={!searchTerm && hasNextPage ? filteredContacts.length + 1 : filteredContacts.length}
+                    itemSize={76}
+                    onItemsRendered={onItemsRendered}
                   >
-                    <Checkbox checked={isSelected} onChange={() => toggleContact({
-                      id: contact.id,
-                      name: contact.pushName || '',
-                      phone: contact.remoteJid || '',
-                      avatar: contact.profilePicUrl || (contact.pushName ? contact.pushName.slice(0, 2).toUpperCase() : "?"),
-                    })} className="border-zinc-500" />
-                    <Avatar className="w-10 h-10">
-                      {contact.profilePicUrl ? (
-                        <img src={contact.profilePicUrl} alt={contact.pushName} className="w-10 h-10 rounded-full object-cover" />
-                      ) : (
-                        <AvatarFallback className="bg-gradient-to-br from-emerald-400 to-cyan-400 text-black font-bold">
-                          {contact.pushName ? contact.pushName.slice(0, 2).toUpperCase() : "?"}
-                        </AvatarFallback>
-                      )}
-                    </Avatar>
-                    <div className="flex-1">
-                      <p className="text-white font-medium flex items-center gap-2">
-                        {contact.pushName}
-                        {contact.remoteJid.startsWith('120') ? (
-                          <Badge variant="secondary" className="bg-blue-900 text-blue-300 border-blue-700">Grupo</Badge>
-                        ) : (
-                          <Badge variant="secondary" className="bg-zinc-800 text-zinc-300 border-zinc-700">Contato</Badge>
-                        )}
-                      </p>
-                      <p className="text-zinc-400 text-sm">{contact.remoteJid}</p>
-                    </div>
-                  </div>
-                )
-              })}
+                    {({ index, style }) => {
+                      if (index >= filteredContacts.length) {
+                        return (
+                          <div style={style} className="p-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-zinc-700 animate-pulse rounded-full"></div>
+                              <div className="flex-1">
+                                <div className="h-4 bg-zinc-700 animate-pulse rounded mb-1"></div>
+                                <div className="h-3 bg-zinc-700 animate-pulse rounded w-2/3"></div>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      }
+
+                      const contact = filteredContacts[index]
+                      const isSelected = selected.some((c) => c.id === contact.id)
+
+                      return (
+                        <div
+                          style={style}
+                          className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${isSelected
+                            ? "bg-emerald-500/10 border border-emerald-500/50"
+                            : "bg-zinc-800/50 hover:bg-zinc-700/50"
+                            }`}
+                          onClick={() => toggleContact({
+                            id: contact.id,
+                            name: contact.pushName || '',
+                            phone: contact.remoteJid || '',
+                            avatar: contact.profilePicUrl || (contact.pushName ? contact.pushName.slice(0, 2).toUpperCase() : "?"),
+                          })}
+                        >
+                          <Checkbox checked={isSelected} onChange={() => toggleContact({
+                            id: contact.id,
+                            name: contact.pushName || '',
+                            phone: contact.remoteJid || '',
+                            avatar: contact.profilePicUrl || (contact.pushName ? contact.pushName.slice(0, 2).toUpperCase() : "?"),
+                          })} className="border-zinc-500" />
+                          <Avatar className="w-10 h-10">
+                            {contact.profilePicUrl ? (
+                              <img src={contact.profilePicUrl} alt={contact.pushName} className="w-10 h-10 rounded-full object-cover" />
+                            ) : (
+                              <AvatarFallback className="bg-gradient-to-br from-emerald-400 to-cyan-400 text-black font-bold">
+                                {contact.pushName ? contact.pushName.slice(0, 2).toUpperCase() : "?"}
+                              </AvatarFallback>
+                            )}
+                          </Avatar>
+                          <div className="flex-1">
+                            <p className="text-white font-medium flex items-center gap-2">
+                              {contact.pushName}
+                              {contact.remoteJid.startsWith('120') ? (
+                                <Badge variant="secondary" className="bg-blue-900 text-blue-300 border-blue-700">Grupo</Badge>
+                              ) : (
+                                <Badge variant="secondary" className="bg-zinc-800 text-zinc-300 border-zinc-700">Contato</Badge>
+                              )}
+                            </p>
+                            <p className="text-zinc-400 text-sm">{contact.remoteJid}</p>
+                          </div>
+                        </div>
+                      )
+                    }}
+                  </List>
+                )}
+              </InfiniteLoader>
             </div>
           </div>
         )}

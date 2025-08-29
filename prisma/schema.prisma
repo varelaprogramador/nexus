@@ -36,9 +36,17 @@ model DisparoLog {
 }
 
 model Instance {
-  id        String   @id @default(uuid())
-  name      String
-  userId    String // id do usuário Clerk
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                  String    @id @default(uuid())
+  name                String
+  userId              String // id do usuário Clerk
+  connectionStatus    String? // open, close, connecting
+  profileName         String? // Nome do perfil do WhatsApp
+  profilePicUrl       String? // URL da foto do perfil
+  number              String? // Número do WhatsApp
+  token               String? // Token de autenticação
+  disconnectionReason String? // Motivo da desconexão
+  lastConnectionAt    DateTime? // Última vez que conectou
+  lastDisconnectionAt DateTime? // Última vez que desconectou
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 }
