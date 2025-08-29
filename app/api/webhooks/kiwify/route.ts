@@ -4,21 +4,21 @@ import { clerkClient } from "@clerk/nextjs/server";
 import crypto from "crypto";
 
 interface KiwifyWebhookPayload {
-  url: string;
-  signature: string;
-  order: {
-    order_id: string;
-    order_status: string;
-    Product: {
-      product_name: string;
-    };
-    Customer: {
-      full_name: string;
-      first_name: string;
-      email: string;
-      mobile: string;
-      CPF: string;
-    };
+  order_id: string;
+  order_status: string;
+  created_at: string;
+  Product: {
+    product_name: string;
+  };
+  Customer: {
+    full_name: string;
+    first_name: string;
+    email: string;
+    mobile: string;
+    CPF: string;
+  };
+  Commissions: {
+    charge_amount: number;
   };
 }
 
@@ -93,51 +93,46 @@ export async function POST(request: NextRequest) {
 
     console.log("Raw webhook payload:", rawBody);
 
-    const payload = JSON.parse(rawBody);
+    const payload: KiwifyWebhookPayload = JSON.parse(rawBody);
     
     console.log("Parsed webhook payload structure:", {
-      hasOrder: !!payload.order,
-      hasOrderId: !!payload.order?.order_id,
-      keys: Object.keys(payload),
-      orderKeys: payload.order ? Object.keys(payload.order) : null
+      hasOrderId: !!payload.order_id,
+      keys: Object.keys(payload)
     });
 
     // Se não tiver order_id, definir como "nenhum"
-    if (!payload.order) {
-      payload.order = {};
-    }
-    if (!payload.order.order_id) {
-      payload.order.order_id = "nenhum";
+    if (!payload.order_id) {
+      payload.order_id = "nenhum";
       console.log("Warning: order_id not found, setting as 'nenhum'");
     }
-    if (!payload.order.order_status) {
-      payload.order.order_status = "unknown";
+    if (!payload.order_status) {
+      payload.order_status = "unknown";
       console.log("Warning: order_status not found, setting as 'unknown'");
     }
-    if (!payload.order.Customer) {
-      payload.order.Customer = {};
+    if (!payload.Customer) {
+      payload.Customer = {} as any;
       console.log("Warning: Customer not found, setting empty object");
     }
-    if (!payload.order.Product) {
-      payload.order.Product = {};
+    if (!payload.Product) {
+      payload.Product = {} as any;
       console.log("Warning: Product not found, setting empty object");
     }
 
     console.log("Kiwify webhook received:", {
-      orderId: payload.order.order_id,
-      status: payload.order.order_status,
-      customerEmail: payload.order.Customer?.email,
-      productName: payload.order.Product?.product_name,
+      orderId: payload.order_id,
+      status: payload.order_status,
+      customerEmail: payload.Customer?.email,
+      productName: payload.Product?.product_name,
     });
 
-    if (payload.order.order_status !== "paid") {
+    if (payload.order_status !== "paid") {
       console.log(
-        `Order ${payload.order.order_id} not paid, skipping account creation`
+        `Order ${payload.order_id} not paid, skipping account creation`
       );
       return NextResponse.json({ message: "Order not paid, skipping" });
     }
 
-    const { Customer: customer } = payload.order;
+    const { Customer: customer } = payload;
     const fullName = customer.full_name || `${customer.first_name}`.trim();
     const clerk = (await clerkClient()).users;
 
@@ -153,8 +148,8 @@ export async function POST(request: NextRequest) {
       await clerk.updateUserMetadata(existingUser.id, {
         publicMetadata: {
           ...existingUser.publicMetadata,
-          kiwifyOrderId: payload.order.order_id,
-          productName: payload.order.Product.product_name,
+          kiwifyOrderId: payload.order_id,
+          productName: payload.Product.product_name,
           subscription: "active",
           type: "whitelabel",
           lastPurchase: new Date().toISOString(),
@@ -176,8 +171,8 @@ export async function POST(request: NextRequest) {
         email: customer.email,
         name: fullName,
         phone: customer.mobile,
-        kiwifyOrderId: payload.order.order_id,
-        productName: payload.order.Product.product_name,
+        kiwifyOrderId: payload.order_id,
+        productName: payload.Product.product_name,
         subscription: "active",
         type: "whitelabel",
         isExisting: true,
@@ -187,7 +182,7 @@ export async function POST(request: NextRequest) {
         success: true,
         message: "User updated successfully",
         userId: existingUser.id,
-        orderId: payload.order.order_id,
+        orderId: payload.order_id,
       });
     } else {
       // Usuário não existe - criar
@@ -204,8 +199,8 @@ export async function POST(request: NextRequest) {
           firstName: customer.first_name,
           password: crypto.randomBytes(16).toString('hex'), // Senha temporária aleatória
           publicMetadata: {
-            kiwifyOrderId: payload.order.order_id,
-            productName: payload.order.Product.product_name,
+            kiwifyOrderId: payload.order_id,
+            productName: payload.Product.product_name,
             subscription: "active",
             type: "whitelabel",
             createdFromWebhook: true,
@@ -224,8 +219,8 @@ export async function POST(request: NextRequest) {
           email: customer.email,
           name: fullName,
           phone: customer.mobile,
-          kiwifyOrderId: payload.order.order_id,
-          productName: payload.order.Product.product_name,
+          kiwifyOrderId: payload.order_id,
+          productName: payload.Product.product_name,
           subscription: "active",
           type: "whitelabel",
         });
@@ -234,7 +229,7 @@ export async function POST(request: NextRequest) {
           success: true,
           message: "User created successfully",
           userId: user.id,
-          orderId: payload.order.order_id,
+          orderId: payload.order_id,
         });
       } catch (clerkError: any) {
         console.error("Detailed Clerk error:", {
@@ -257,8 +252,8 @@ export async function POST(request: NextRequest) {
             await clerk.updateUserMetadata(existingUser.id, {
               publicMetadata: {
                 ...existingUser.publicMetadata,
-                kiwifyOrderId: payload.order.order_id,
-                productName: payload.order.Product.product_name,
+                kiwifyOrderId: payload.order_id,
+                productName: payload.Product.product_name,
                 subscription: "active",
                 type: "whitelabel",
                 lastPurchase: new Date().toISOString(),
@@ -275,8 +270,8 @@ export async function POST(request: NextRequest) {
               email: customer.email,
               name: fullName,
               phone: customer.mobile,
-              kiwifyOrderId: payload.order.order_id,
-              productName: payload.order.Product.product_name,
+              kiwifyOrderId: payload.order_id,
+              productName: payload.Product.product_name,
               subscription: "active",
               type: "whitelabel",
               isExisting: true,
@@ -286,7 +281,7 @@ export async function POST(request: NextRequest) {
               success: true,
               message: "User updated successfully (fallback)",
               userId: existingUser.id,
-              orderId: payload.order.order_id,
+              orderId: payload.order_id,
             });
           }
         }
