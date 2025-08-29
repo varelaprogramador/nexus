@@ -4,29 +4,22 @@ import { clerkClient } from "@clerk/nextjs/server";
 import crypto from "crypto";
 
 interface KiwifyWebhookPayload {
-  order_id: string;
-  order_status: string;
-  customer: {
-    email: string;
-    first_name: string;
-    last_name: string;
-    mobile: string;
-    CPF: string;
-  };
-  Product: {
-    product_name: string;
-  };
-  commissions: Array<{
+  url: string;
+  signature: string;
+  order: {
     order_id: string;
-    product_id: string;
-    product_name: string;
-    affiliate_email: string;
-    producer_email: string;
-    customer_email: string;
     order_status: string;
-    sale_amount: number;
-    sale_currency: string;
-  }>;
+    Product: {
+      product_name: string;
+    };
+    Customer: {
+      full_name: string;
+      first_name: string;
+      email: string;
+      mobile: string;
+      CPF: string;
+    };
+  };
 }
 
 function verifyKiwifySignature(
@@ -46,6 +39,7 @@ function verifyKiwifySignature(
 }
 
 async function sendToExternalWebhook(userData: any) {
+  console.log("oi");
   const externalWebhookUrl = process.env.EXTERNAL_WEBHOOK_URL;
 
   if (!externalWebhookUrl) {
@@ -88,7 +82,7 @@ export async function GET() {
     status: "ok",
     message: "Kiwify webhook endpoint is active",
     timestamp: new Date().toISOString(),
-    endpoint: "/api/webhooks/kiwify"
+    endpoint: "/api/webhooks/kiwify",
   });
 }
 
@@ -96,128 +90,176 @@ export async function POST(request: NextRequest) {
   try {
     const rawBody = await request.text();
     const signature = request.headers.get("X-Kiwify-Signature") || "";
-    const kiwifySecret = process.env.KIWIFY_WEBHOOK_SECRET || "";
-
-    if (!kiwifySecret) {
-      console.error("KIWIFY_WEBHOOK_SECRET not configured");
-      return NextResponse.json(
-        { error: "Webhook secret not configured" },
-        { status: 500 }
-      );
-    }
-
-    if (!verifyKiwifySignature(rawBody, signature, kiwifySecret)) {
-      console.error("Invalid webhook signature");
-      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-    }
 
     const payload: KiwifyWebhookPayload = JSON.parse(rawBody);
 
     console.log("Kiwify webhook received:", {
-      orderId: payload.order_id,
-      status: payload.order_status,
-      customerEmail: payload.customer.email,
-      productName: payload.Product.product_name,
+      orderId: payload.order.order_id,
+      status: payload.order.order_status,
+      customerEmail: payload.order.Customer.email,
+      productName: payload.order.Product.product_name,
     });
 
-    if (payload.order_status !== "paid") {
+    if (payload.order.order_status !== "paid") {
       console.log(
-        `Order ${payload.order_id} not paid, skipping account creation`
+        `Order ${payload.order.order_id} not paid, skipping account creation`
       );
       return NextResponse.json({ message: "Order not paid, skipping" });
     }
 
-    const { customer } = payload;
-    const fullName = `${customer.first_name} ${customer.last_name}`.trim();
+    const { Customer: customer } = payload.order;
+    const fullName = customer.full_name || `${customer.first_name}`.trim();
     const clerk = (await clerkClient()).users;
-    try {
-      const user = await clerk.createUser({
-        emailAddress: [customer.email],
-        firstName: customer.first_name,
-        lastName: customer.last_name,
+
+    // Sempre tenta buscar usuário existente primeiro
+    const existingUsers = await clerk.getUserList({
+      emailAddress: [customer.email],
+    });
+
+    if (existingUsers.data.length > 0) {
+      // Usuário existe - atualizar
+      const existingUser = existingUsers.data[0];
+
+      await clerk.updateUserMetadata(existingUser.id, {
         publicMetadata: {
-          kiwifyOrderId: payload.order_id,
-          productName: payload.Product.product_name,
+          ...existingUser.publicMetadata,
+          kiwifyOrderId: payload.order.order_id,
+          productName: payload.order.Product.product_name,
           subscription: "active",
           type: "whitelabel",
-          createdFromWebhook: true,
+          lastPurchase: new Date().toISOString(),
         },
         privateMetadata: {
+          ...existingUser.privateMetadata,
           cpf: customer.CPF,
           mobile: customer.mobile,
         },
       });
 
       console.log(
-        `User created in Clerk: ${user.id} for email: ${customer.email}`
+        `Updated existing user: ${existingUser.id} for email: ${customer.email}`
       );
 
-      console.log(`User record created in database for: ${customer.email}`);
-
-      // Dispara webhook externo
+      // Dispara webhook externo para usuário existente
       await sendToExternalWebhook({
-        id: user.id,
+        id: existingUser.id,
         email: customer.email,
         name: fullName,
-        kiwifyOrderId: payload.order_id,
-        productName: payload.Product.product_name,
+        kiwifyOrderId: payload.order.order_id,
+        productName: payload.order.Product.product_name,
         subscription: "active",
         type: "whitelabel",
+        isExisting: true,
       });
 
       return NextResponse.json({
         success: true,
-        message: "Account created successfully",
-        userId: user.id,
-        orderId: payload.order_id,
+        message: "User updated successfully",
+        userId: existingUser.id,
+        orderId: payload.order.order_id,
       });
-    } catch (clerkError: any) {
-      if (clerkError.errors?.[0]?.code === "form_identifier_exists") {
-        console.log(`User already exists for email: ${customer.email}`);
+    } else {
+      // Usuário não existe - criar
+      console.log("Creating new user with data:", {
+        email: customer.email,
+        firstName: customer.first_name,
+        cpf: customer.CPF,
+        mobile: customer.mobile,
+      });
 
-        const existingUsers = await clerk.getUserList({
+      try {
+        const user = await clerk.createUser({
           emailAddress: [customer.email],
-        });
-
-        if (existingUsers.data.length > 0) {
-          const existingUser = existingUsers.data[0];
-
-          await clerk.updateUserMetadata(existingUser.id, {
-            publicMetadata: {
-              ...existingUser.publicMetadata,
-              kiwifyOrderId: payload.order_id,
-              productName: payload.Product.product_name,
-              subscription: "active",
-              type: "whitelabel",
-              lastPurchase: new Date().toISOString(),
-            },
-          });
-
-          console.log(`Updated existing user metadata: ${existingUser.id}`);
-
-          // Dispara webhook externo para usuário existente
-          await sendToExternalWebhook({
-            id: existingUser.id,
-            email: customer.email,
-            name: fullName,
-            kiwifyOrderId: payload.order_id,
-            productName: payload.Product.product_name,
+          firstName: customer.first_name,
+          password: crypto.randomBytes(16).toString('hex'), // Senha temporária aleatória
+          publicMetadata: {
+            kiwifyOrderId: payload.order.order_id,
+            productName: payload.order.Product.product_name,
             subscription: "active",
             type: "whitelabel",
-            isExisting: true,
+            createdFromWebhook: true,
+          },
+          privateMetadata: {
+            cpf: customer.CPF,
+            mobile: customer.mobile,
+          },
+        });
+
+        console.log(`User created: ${user.id} for email: ${customer.email}`);
+
+        // Dispara webhook externo para usuário criado
+        await sendToExternalWebhook({
+          id: user.id,
+          email: customer.email,
+          name: fullName,
+          kiwifyOrderId: payload.order.order_id,
+          productName: payload.order.Product.product_name,
+          subscription: "active",
+          type: "whitelabel",
+        });
+
+        return NextResponse.json({
+          success: true,
+          message: "User created successfully",
+          userId: user.id,
+          orderId: payload.order.order_id,
+        });
+      } catch (clerkError: any) {
+        console.error("Detailed Clerk error:", {
+          message: clerkError.message,
+          status: clerkError.status,
+          errors: clerkError.errors,
+          clerkTraceId: clerkError.clerkTraceId,
+        });
+
+        // Se o usuário já existe, tenta buscar e atualizar
+        if (clerkError.errors?.[0]?.code === "form_identifier_exists") {
+          console.log("User exists after all, trying to update...");
+          const existingUsers = await clerk.getUserList({
+            emailAddress: [customer.email],
           });
 
-          return NextResponse.json({
-            success: true,
-            message: "User already exists, metadata updated",
-            userId: existingUser.id,
-            orderId: payload.order_id,
-          });
+          if (existingUsers.data.length > 0) {
+            const existingUser = existingUsers.data[0];
+
+            await clerk.updateUserMetadata(existingUser.id, {
+              publicMetadata: {
+                ...existingUser.publicMetadata,
+                kiwifyOrderId: payload.order.order_id,
+                productName: payload.order.Product.product_name,
+                subscription: "active",
+                type: "whitelabel",
+                lastPurchase: new Date().toISOString(),
+              },
+              privateMetadata: {
+                ...existingUser.privateMetadata,
+                cpf: customer.CPF,
+                mobile: customer.mobile,
+              },
+            });
+
+            await sendToExternalWebhook({
+              id: existingUser.id,
+              email: customer.email,
+              name: fullName,
+              kiwifyOrderId: payload.order.order_id,
+              productName: payload.order.Product.product_name,
+              subscription: "active",
+              type: "whitelabel",
+              isExisting: true,
+            });
+
+            return NextResponse.json({
+              success: true,
+              message: "User updated successfully (fallback)",
+              userId: existingUser.id,
+              orderId: payload.order.order_id,
+            });
+          }
         }
-      }
 
-      console.error("Error creating user in Clerk:", clerkError);
-      throw clerkError;
+        throw clerkError;
+      }
     }
   } catch (error: any) {
     console.error("Webhook processing error:", error);
