@@ -110,6 +110,18 @@ export async function POST(request: NextRequest) {
       payload.order.order_id = "nenhum";
       console.log("Warning: order_id not found, setting as 'nenhum'");
     }
+    if (!payload.order.order_status) {
+      payload.order.order_status = "unknown";
+      console.log("Warning: order_status not found, setting as 'unknown'");
+    }
+    if (!payload.order.Customer) {
+      payload.order.Customer = {};
+      console.log("Warning: Customer not found, setting empty object");
+    }
+    if (!payload.order.Product) {
+      payload.order.Product = {};
+      console.log("Warning: Product not found, setting empty object");
+    }
 
     console.log("Kiwify webhook received:", {
       orderId: payload.order.order_id,
