@@ -91,13 +91,31 @@ export async function POST(request: NextRequest) {
     const rawBody = await request.text();
     const signature = request.headers.get("X-Kiwify-Signature") || "";
 
-    const payload: KiwifyWebhookPayload = JSON.parse(rawBody);
+    console.log("Raw webhook payload:", rawBody);
+
+    const payload = JSON.parse(rawBody);
+    
+    console.log("Parsed webhook payload structure:", {
+      hasOrder: !!payload.order,
+      hasOrderId: !!payload.order?.order_id,
+      keys: Object.keys(payload),
+      orderKeys: payload.order ? Object.keys(payload.order) : null
+    });
+
+    // Se não tiver order_id, definir como "nenhum"
+    if (!payload.order) {
+      payload.order = {};
+    }
+    if (!payload.order.order_id) {
+      payload.order.order_id = "nenhum";
+      console.log("Warning: order_id not found, setting as 'nenhum'");
+    }
 
     console.log("Kiwify webhook received:", {
       orderId: payload.order.order_id,
       status: payload.order.order_status,
-      customerEmail: payload.order.Customer.email,
-      productName: payload.order.Product.product_name,
+      customerEmail: payload.order.Customer?.email,
+      productName: payload.order.Product?.product_name,
     });
 
     if (payload.order.order_status !== "paid") {
