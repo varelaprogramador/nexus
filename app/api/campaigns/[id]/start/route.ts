@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/prisma";
+import api from "@/lib/api";
 
 interface RouteParams {
   params: {
@@ -17,10 +18,12 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
 
+    const resolvedParams = await params;
+
     // Buscar campanha
     const campaign = await prisma.campaign.findFirst({
       where: {
-        id: params.id,
+        id: resolvedParams.id,
         userId
       }
     });
@@ -38,19 +41,24 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
     // Verificar se tem contatos e mensagens
     const contacts = campaign.contacts as any[];
-    const messageBlocks = campaign.messageBlocks as any[];
+    let messageBlocks = campaign.messageBlocks as any[];
 
     if (!contacts || contacts.length === 0) {
       return NextResponse.json({ error: "Campanha não tem contatos" }, { status: 400 });
     }
 
+    // Se não há messageBlocks, criar uma mensagem padrão
     if (!messageBlocks || messageBlocks.length === 0) {
-      return NextResponse.json({ error: "Campanha não tem mensagens configuradas" }, { status: 400 });
+      messageBlocks = [{
+        type: 'text',
+        text: 'Olá! Esta é uma mensagem da campanha.',
+        delay: 5
+      }];
     }
 
     // Atualizar status para execução
     const updatedCampaign = await prisma.campaign.update({
-      where: { id: params.id },
+      where: { id: resolvedParams.id },
       data: {
         status: "RUNNING",
         startedAt: new Date(),
@@ -71,7 +79,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         executionRecords.push({
           campaignId: campaign.id,
           blockIndex,
-          contact: typeof contact === 'string' ? contact : contact.phone || contact.number,
+          contact: typeof contact === 'string' ? contact : (contact.phone || contact.id || contact.remoteJid || contact.number),
           status: 'pending'
         });
       }
@@ -104,25 +112,44 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 // Função para processar campanha em background
 async function processCampaign(campaignId: string) {
   try {
-    console.log(`Iniciando processamento da campanha ${campaignId}`);
-    
-    // Esta função seria executada em background
-    // Você pode integrar com Redis Queue, Bull Queue, ou similar
+    console.log(`🚀 Iniciando processamento da campanha ${campaignId}`);
     
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId }
     });
 
-    if (!campaign) return;
+    if (!campaign) {
+      console.error(`❌ Campanha ${campaignId} não encontrada`);
+      return;
+    }
 
-    const messageBlocks = campaign.messageBlocks as any[];
+    let messageBlocks = campaign.messageBlocks as any[];
     const contacts = campaign.contacts as any[];
+    
+    // Se não há messageBlocks, usar mensagem padrão
+    if (!messageBlocks || messageBlocks.length === 0) {
+      messageBlocks = [{
+        type: 'text',
+        text: 'Olá! Esta é uma mensagem da campanha.',
+        delay: 5
+      }];
+    }
+    
+    console.log(`📊 Campanha "${campaign.name}" - ${contacts.length} contatos, ${messageBlocks.length} blocos de mensagem`);
+    
+    let totalProcessed = 0;
+    const totalMessages = contacts.length * messageBlocks.length;
     
     // Processar cada bloco de mensagem para cada contato
     for (let blockIndex = 0; blockIndex < messageBlocks.length; blockIndex++) {
       const block = messageBlocks[blockIndex];
+      console.log(`📝 Processando bloco ${blockIndex + 1}/${messageBlocks.length}: "${block.text?.substring(0, 50) || 'Mídia'}..."`);
       
-      for (const contact of contacts) {
+      for (let contactIndex = 0; contactIndex < contacts.length; contactIndex++) {
+        const contact = contacts[contactIndex];
+        totalProcessed++;
+        
+        console.log(`📱 Enviando para contato ${contactIndex + 1}/${contacts.length} (${Math.round((totalProcessed/totalMessages)*100)}% concluído)`);
         // Verificar se deve parar (campanha pausada/cancelada)
         const currentCampaign = await prisma.campaign.findUnique({
           where: { id: campaignId }
@@ -139,7 +166,7 @@ async function processCampaign(campaignId: string) {
             where: {
               campaignId,
               blockIndex,
-              contact: typeof contact === 'string' ? contact : contact.phone || contact.number,
+              contact: typeof contact === 'string' ? contact : (contact.phone || contact.id || contact.remoteJid || contact.number),
               status: 'pending'
             },
             data: {
@@ -148,19 +175,16 @@ async function processCampaign(campaignId: string) {
             }
           });
 
-          // Aqui você faria a chamada real para a API de disparo
-          // const result = await sendMessage(campaign.instance, contact, block);
-          
-          // Simular envio (substituir pela lógica real)
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          const success = Math.random() > 0.1; // 90% de sucesso
+          // Fazer disparo real através da API Evolution
+          const result = await sendMessage(campaign.instance, contact, block);
+          const success = result.success;
 
           if (success) {
             await prisma.campaignExecution.updateMany({
               where: {
                 campaignId,
                 blockIndex,
-                contact: typeof contact === 'string' ? contact : contact.phone || contact.number,
+                contact: typeof contact === 'string' ? contact : (contact.phone || contact.id || contact.remoteJid || contact.number),
                 status: 'sending'
               },
               data: {
@@ -184,12 +208,12 @@ async function processCampaign(campaignId: string) {
               where: {
                 campaignId,
                 blockIndex,
-                contact: typeof contact === 'string' ? contact : contact.phone || contact.number,
+                contact: typeof contact === 'string' ? contact : (contact.phone || contact.id || contact.remoteJid || contact.number),
                 status: 'sending'
               },
               data: {
                 status: 'failed',
-                error: 'Erro simulado'
+                error: result.error || 'Falha no envio'
               }
             });
 
@@ -205,7 +229,8 @@ async function processCampaign(campaignId: string) {
           }
 
           // Delay entre envios
-          const delay = block.delay || campaign.settings?.defaultDelay || 5;
+          const delay = block.delay || (campaign.settings as any)?.defaultDelay || 5;
+          console.log(`⏳ Aguardando ${delay}s antes do próximo envio...`);
           await new Promise(resolve => setTimeout(resolve, delay * 1000));
 
         } catch (error) {
@@ -215,7 +240,7 @@ async function processCampaign(campaignId: string) {
             where: {
               campaignId,
               blockIndex,
-              contact: typeof contact === 'string' ? contact : contact.phone || contact.number,
+              contact: typeof contact === 'string' ? contact : (contact.phone || contact.id || contact.remoteJid || contact.number),
               status: 'sending'
             },
             data: {
@@ -236,6 +261,12 @@ async function processCampaign(campaignId: string) {
       }
     }
 
+    // Buscar estatísticas finais
+    const finalStats = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { sentCount: true, failedCount: true, totalContacts: true }
+    });
+
     // Marcar campanha como concluída
     await prisma.campaign.update({
       where: { id: campaignId },
@@ -245,7 +276,8 @@ async function processCampaign(campaignId: string) {
       }
     });
 
-    console.log(`Campanha ${campaignId} concluída`);
+    console.log(`🎉 Campanha ${campaignId} concluída com sucesso!`);
+    console.log(`📈 Resumo: ${finalStats?.sentCount || 0} enviadas, ${finalStats?.failedCount || 0} falhas, de ${finalStats?.totalContacts || 0} total`);
 
   } catch (error) {
     console.error(`Erro no processamento da campanha ${campaignId}:`, error);
@@ -257,6 +289,93 @@ async function processCampaign(campaignId: string) {
         status: "CANCELLED"
       }
     });
+  }
+}
+
+// Função para enviar mensagem através da API Evolution
+async function sendMessage(instanceName: string, contact: any, messageBlock: any) {
+  try {
+    const apikey = process.env.EVOLUTION_API_KEY || process.env.NEXT_PUBLIC_EVOLUTION_API_KEY;
+    
+    if (!apikey) {
+      console.error('API Key não configurada');
+      return { success: false, error: 'API Key não configurada' };
+    }
+
+    // Extrair informações do contato
+    let phone: string = '';
+    
+    if (typeof contact === 'string') {
+      phone = contact;
+    } else if (contact && typeof contact === 'object') {
+      phone = contact.phone || contact.id || contact.remoteJid || contact.number || '';
+    }
+    
+    if (!phone) {
+      console.error('Número de telefone não encontrado no contato:', contact);
+      return { success: false, error: 'Número de telefone não encontrado' };
+    }
+
+    // Limpar o número removendo caracteres especiais, mantendo apenas dígitos
+    const cleanPhone = phone.replace(/[^\d]/g, '');
+    
+    if (!cleanPhone) {
+      console.error('Número de telefone inválido após limpeza:', phone);
+      return { success: false, error: 'Número de telefone inválido' };
+    }
+
+    // Preparar payload baseado no tipo de mensagem
+    let payload: any = {
+      number: cleanPhone,
+    };
+
+    // Verificar tipo de mensagem no messageBlock
+    if (messageBlock.type === 'text' || !messageBlock.type) {
+      payload.text = messageBlock.text || messageBlock.content || '';
+    } else if (messageBlock.type === 'media') {
+      payload.mediaMessage = {
+        mediatype: messageBlock.mediatype || 'image',
+        media: messageBlock.media || messageBlock.url,
+        caption: messageBlock.caption || messageBlock.text || ''
+      };
+    }
+
+    console.log(`Enviando mensagem para ${cleanPhone} na instância ${instanceName}:`, JSON.stringify(payload));
+
+    // Fazer a chamada para a API Evolution
+    const response = await api.post(`/message/sendText/${instanceName}`, payload, {
+      headers: {
+        'apikey': apikey,
+        'Content-Type': 'application/json'
+      },
+      timeout: 30000 // 30 segundos timeout
+    });
+
+    if (response.data && (response.data.key || response.data.message)) {
+      console.log(`✅ Mensagem enviada com sucesso para ${cleanPhone}:`, response.data.key?.id || 'ID não disponível');
+      return { 
+        success: true, 
+        data: response.data,
+        messageId: response.data.key?.id || null
+      };
+    } else {
+      console.error('❌ Resposta inesperada da API:', response.data);
+      return { success: false, error: 'Resposta inesperada da API' };
+    }
+
+  } catch (error: any) {
+    console.error('Erro ao enviar mensagem:', error.response?.data || error.message);
+    
+    const errorMessage = error.response?.data?.message || 
+                        error.response?.data?.error || 
+                        error.message || 
+                        'Erro desconhecido no envio';
+
+    return { 
+      success: false, 
+      error: errorMessage,
+      statusCode: error.response?.status
+    };
   }
 }
 

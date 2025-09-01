@@ -39,7 +39,7 @@ const menuItems = [
   { id: "contacts" as Page, label: "Contatos", icon: MessageSquare, href: "/contacts" },
   { id: "mass-dispatch" as Page, label: "Disparo em Massa", icon: Send, href: "/mass-dispatch" },
   { id: "xls-dispatch" as Page, label: "Disparo XLS", icon: FileSpreadsheet, href: "/xls-dispatch" },
-  { id: "campaigns" as Page, label: "Campanhas", icon: Target, href: "/campaigns" },
+  // { id: "campaigns" as Page, label: "Campanhas", icon: Target, href: "/campaigns" },
   { id: "logs" as Page, label: "Logs", icon: FileText, href: "/logs" },
   { id: "settings" as Page, label: "Configurações", icon: Settings, href: "/settings" },
 ]

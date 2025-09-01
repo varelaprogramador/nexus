@@ -37,9 +37,45 @@ export default function InstancesPage() {
   const [qrInstance, setQrInstance] = useState<string | null>(null)
   const qrCodeQuery = useQrCodeInstance(qrInstance || "", API_KEY, !!qrDialogOpen && !!qrInstance)
 
+  // Função helper para verificar se nome já existe
+  const isNameAlreadyInUse = (name: string) => {
+    return instances.some(instance => 
+      (instance.name || instance.id)?.toLowerCase() === name.toLowerCase()
+    )
+  }
+
+  // Função para validar formato do nome da instância
+  const isValidInstanceName = (name: string) => {
+    // Permitir apenas letras, números, hífens e underscores
+    const validNameRegex = /^[a-zA-Z0-9_-]+$/
+    return validNameRegex.test(name)
+  }
+
+  // Função para obter mensagem de erro de validação
+  const getValidationError = (name: string) => {
+    if (!name) return null
+    if (isNameAlreadyInUse(name)) {
+      return "Este nome já está em uso. Escolha um nome diferente."
+    }
+    if (!isValidInstanceName(name)) {
+      return "Use apenas letras, números, hífens (-) e underscores (_)."
+    }
+    return null
+  }
+
   // Função para criar instância
   const handleCreate = () => {
     if (!newInstance.instanceName) return
+    
+    // Verificar validação do nome
+    const validationError = getValidationError(newInstance.instanceName)
+    if (validationError) {
+      toast.error("Nome inválido", {
+        description: validationError
+      })
+      return
+    }
+    
     createInstance.mutate({ name: newInstance.instanceName }, {
       onSuccess: () => {
         setOpen(false)
@@ -47,8 +83,42 @@ export default function InstancesPage() {
         toast.success("Instância criada com sucesso!")
       },
       onError: (error: any) => {
-        toast.error("Erro ao criar instância", {
-          description: error?.message || "Tente novamente."
+        // Extrair mensagem de erro específica
+        let errorMessage = "Erro ao criar instância"
+        let errorDescription = "Tente novamente."
+        
+        // Verificar se é erro de nome duplicado
+        if (error?.response?.data?.response?.message) {
+          const messages = error.response.data.response.message
+          if (Array.isArray(messages) && messages.some((msg: string) => msg.includes("already in use"))) {
+            errorMessage = "Nome já está em uso"
+            errorDescription = `O nome "${newInstance.instanceName}" já está sendo usado por outra instância. Escolha um nome diferente.`
+          } else if (Array.isArray(messages)) {
+            errorDescription = messages.join(", ")
+          }
+        }
+        // Verificar outros formatos de erro
+        else if (error?.response?.data?.message) {
+          errorDescription = Array.isArray(error.response.data.message) 
+            ? error.response.data.message.join(", ")
+            : error.response.data.message
+        }
+        // Verificar erro geral
+        else if (error?.message) {
+          errorDescription = error.message
+        }
+        // Verificar status específicos
+        else if (error?.status === 403 || error?.response?.status === 403) {
+          errorMessage = "Acesso negado"
+          errorDescription = "Você não tem permissão para criar esta instância."
+        }
+        else if (error?.status === 409 || error?.response?.status === 409) {
+          errorMessage = "Conflito"
+          errorDescription = "Já existe uma instância com este nome."
+        }
+        
+        toast.error(errorMessage, {
+          description: errorDescription
         })
       }
     })
@@ -103,18 +173,36 @@ export default function InstancesPage() {
                 <div className="space-y-4 py-4">
                   <div className="space-y-2">
                     <label htmlFor="instanceName" className="text-sm font-medium">Nome da Instância</label>
-                    <Input
-                      id="instanceName"
-                      value={newInstance.instanceName}
-                      onChange={e => setNewInstance({ instanceName: e.target.value })}
-                      placeholder="Digite o nome da instância"
-                      className="border-border/40"
-                    />
+                    <div className="relative">
+                      <Input
+                        id="instanceName"
+                        value={newInstance.instanceName}
+                        onChange={e => setNewInstance({ instanceName: e.target.value })}
+                        placeholder="Ex: minha-instancia-1 ou meu_bot_whatsapp"
+                        className={`border-border/40 ${
+                          getValidationError(newInstance.instanceName)
+                            ? 'border-red-500 focus:ring-red-500' : ''
+                        }`}
+                      />
+                      {getValidationError(newInstance.instanceName) ? (
+                        <p className="text-sm text-red-500 mt-1">
+                          {getValidationError(newInstance.instanceName)}
+                        </p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Use apenas letras, números, hífens (-) e underscores (_)
+                        </p>
+                      )}
+                    </div>
                   </div>
                   <Button
                     className="w-full bg-primary hover:bg-primary/90"
                     onClick={handleCreate}
-                    disabled={!newInstance.instanceName || createInstance.isPending}
+                    disabled={
+                      !newInstance.instanceName || 
+                      createInstance.isPending ||
+                      !!getValidationError(newInstance.instanceName)
+                    }
                   >
                     {createInstance.isPending ? (
                       <>

@@ -1,6 +1,6 @@
 "use client"
 
-import { Target, Activity, Clock, CheckCircle, XCircle, Users, Send, Calendar, Plus, X, Zap, FileText, ImageIcon, Mic, BarChart3, MousePointer } from "lucide-react"
+import { Target, Activity, Clock, CheckCircle, XCircle, Users, Send, Calendar, Plus, X, Zap, FileText, ImageIcon, Mic, BarChart3, MousePointer, Sparkles, Phone, Timer, AlertCircle, TrendingUp, Eye, Waves } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -980,9 +980,23 @@ export default function MassDispatchPage() {
     blocoIndex: number
     blocoContent: string
     numero: string
+    contactName?: string
     status: 'pendente' | 'enviando' | 'sucesso' | 'erro'
     mensagem?: string
+    timestamp?: Date
+    blockType: string
+    duration?: number
+    retryCount?: number
   }>>([])
+
+  const [sendingStats, setSendingStats] = useState({
+    total: 0,
+    sent: 0,
+    failed: 0,
+    inProgress: 0,
+    startTime: null as Date | null,
+    estimatedCompletion: null as Date | null
+  })
 
   // Mock delivery status
   useEffect(() => {
@@ -1016,56 +1030,82 @@ export default function MassDispatchPage() {
 
     setIsSending(true)
     setShowSendingDialog(true)
-    // Inicializa progresso
+    // Inicializa progresso e estatísticas
     const numeros = selectedContacts.map((c) => formatPhone(c.phone))
+    const contactsMap = new Map(selectedContacts.map(c => [formatPhone(c.phone), c.name]))
     let progress: typeof sendingProgress = []
     let blocoCount = 0
+    
+    // Função helper para criar item de progresso
+    const createProgressItem = (blocoIndex: number, content: string, numero: string, blockType: string) => ({
+      blocoIndex,
+      blocoContent: content,
+      numero,
+      contactName: contactsMap.get(numero) || 'Desconhecido',
+      status: 'pendente' as const,
+      timestamp: new Date(),
+      blockType,
+      duration: 0,
+      retryCount: 0
+    })
+    
     blocosTexto.forEach((bloco, blocoIndex) => {
       numeros.forEach(numero => {
-        progress.push({ blocoIndex: blocoCount, blocoContent: bloco.content, numero, status: 'pendente' })
+        progress.push(createProgressItem(blocoCount, bloco.content, numero, 'texto'))
       })
       blocoCount++
     })
     blocosImagem.forEach((bloco, blocoIndex) => {
       numeros.forEach(numero => {
-        progress.push({ blocoIndex: blocoCount, blocoContent: bloco.content, numero, status: 'pendente' })
+        progress.push(createProgressItem(blocoCount, bloco.content || 'Imagem', numero, 'imagem'))
       })
       blocoCount++
     })
     blocosArquivo.forEach((bloco, blocoIndex) => {
       numeros.forEach(numero => {
-        progress.push({ blocoIndex: blocoCount, blocoContent: bloco.content, numero, status: 'pendente' })
+        progress.push(createProgressItem(blocoCount, bloco.content || 'Arquivo', numero, 'arquivo'))
       })
       blocoCount++
     })
     blocosAudio.forEach((bloco, blocoIndex) => {
       numeros.forEach(numero => {
-        progress.push({ blocoIndex: blocoCount, blocoContent: bloco.file?.name || 'Áudio', numero, status: 'pendente' })
+        progress.push(createProgressItem(blocoCount, bloco.file?.name || 'Áudio', numero, 'audio'))
       })
       blocoCount++
     })
     blocosEnquete.forEach((bloco, blocoIndex) => {
       numeros.forEach(numero => {
-        progress.push({ blocoIndex: blocoCount, blocoContent: bloco.pollName || 'Enquete', numero, status: 'pendente' })
+        progress.push(createProgressItem(blocoCount, bloco.pollName || 'Enquete', numero, 'enquete'))
       })
       blocoCount++
     })
     blocosButton.forEach((bloco, blocoIndex) => {
       numeros.forEach(numero => {
-        progress.push({ blocoIndex: blocoCount, blocoContent: bloco.buttonTitle || 'Botão', numero, status: 'pendente' })
+        progress.push(createProgressItem(blocoCount, bloco.buttonTitle || 'Botão', numero, 'botao'))
       })
       blocoCount++
     })
+    
     setSendingProgress(progress)
+    setSendingStats({
+      total: progress.length,
+      sent: 0,
+      failed: 0,
+      inProgress: 0,
+      startTime: new Date(),
+      estimatedCompletion: null
+    })
     try {
       // Envio de texto
       for (let blocoIndex = 0; blocoIndex < blocosTexto.length; blocoIndex++) {
         const bloco = blocosTexto[blocoIndex]
         for (let numeroIndex = 0; numeroIndex < numeros.length; numeroIndex++) {
           const numero = numeros[numeroIndex]
+          const startTime = Date.now()
           setSendingProgress(prev => prev.map((p, idx) =>
-            p.blocoIndex === blocoIndex && p.numero === numero ? { ...p, status: 'enviando' } : p
+            p.blocoIndex === blocoIndex && p.numero === numero ? { ...p, status: 'enviando', timestamp: new Date() } : p
           ))
+          setSendingStats(prev => ({ ...prev, inProgress: prev.inProgress + 1 }))
           const payload = {
             instance: selectedInstance,
             numeros: [numero],
@@ -1076,17 +1116,33 @@ export default function MassDispatchPage() {
           console.log('Enviando disparo:', payload)
           try {
             const [result] = await dispararMensagem(payload)
+            const duration = Date.now() - startTime
+            const isSuccess = result.status === 'sucesso'
             setSendingProgress(prev => prev.map((p, idx) =>
               p.blocoIndex === blocoIndex && p.numero === numero
-                ? { ...p, status: result.status === 'sucesso' ? 'sucesso' : 'erro', mensagem: result.mensagem }
+                ? { ...p, status: isSuccess ? 'sucesso' : 'erro', mensagem: result.mensagem, duration, timestamp: new Date() }
                 : p
             ))
+            setSendingStats(prev => ({
+              ...prev,
+              inProgress: prev.inProgress - 1,
+              sent: isSuccess ? prev.sent + 1 : prev.sent,
+              failed: !isSuccess ? prev.failed + 1 : prev.failed,
+              estimatedCompletion: prev.sent + prev.failed > 0 ? 
+                new Date(Date.now() + ((prev.total - prev.sent - prev.failed) * (duration || 2000))) : null
+            }))
           } catch (err: any) {
+            const duration = Date.now() - startTime
             setSendingProgress(prev => prev.map((p, idx) =>
               p.blocoIndex === blocoIndex && p.numero === numero
-                ? { ...p, status: 'erro', mensagem: err?.message || 'Erro' }
+                ? { ...p, status: 'erro', mensagem: err?.message || 'Erro', duration, timestamp: new Date() }
                 : p
             ))
+            setSendingStats(prev => ({
+              ...prev,
+              inProgress: prev.inProgress - 1,
+              failed: prev.failed + 1
+            }))
           }
           if ((bloco.delay ?? delay) > 0) {
             await new Promise(res => setTimeout(res, ((bloco.delay ?? delay) * 1000)))
@@ -1641,32 +1697,226 @@ export default function MassDispatchPage() {
         instanceName={selectedInstance}
         apikey={process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || ""}
       />
-      {/* Popup de envio em tempo real */}
+      {/* Popup de envio em tempo real com design aprimorado */}
       <ProgressDialog open={showSendingDialog} onOpenChange={open => { if (!isSending) setShowSendingDialog(open) }}>
-        <ProgressDialogContent className="max-w-xl bg-zinc-900 border-zinc-700">
+        <ProgressDialogContent className="max-w-4xl bg-gradient-to-br from-zinc-900 via-zinc-900 to-zinc-800 border-zinc-700 shadow-2xl">
           <ProgressDialogHeader>
-            <ProgressDialogTitle className="text-white flex items-center gap-2">
-              <Send className="w-5 h-5 text-emerald-400" />
-              Enviando mensagens em tempo real
+            <ProgressDialogTitle className="text-white flex items-center gap-3 text-xl">
+              <div className="p-2 bg-gradient-to-r from-emerald-500 to-cyan-500 rounded-lg">
+                <Waves className="w-6 h-6 text-black animate-pulse" />
+              </div>
+              <div>
+                <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent font-bold">
+                  Disparo em Tempo Real
+                </span>
+                <p className="text-sm text-zinc-400 font-normal mt-1">
+                  Acompanhe o envio das mensagens em tempo real
+                </p>
+              </div>
             </ProgressDialogTitle>
           </ProgressDialogHeader>
-          <div className="mt-4 max-h-96 overflow-y-auto space-y-2">
-            {sendingProgress.map((p, idx) => (
-              <div key={idx} className="flex items-center gap-2 text-sm p-2 rounded border border-zinc-700 bg-zinc-800">
-                <span className="font-mono text-xs text-zinc-400">Bloco {p.blocoIndex + 1}</span>
-                <span className="truncate flex-1 text-white">{p.numero}</span>
-                <span className="truncate max-w-xs text-zinc-400">{p.blocoContent.slice(0, 40)}{p.blocoContent.length > 40 ? '...' : ''}</span>
-                {p.status === 'enviando' && <Clock className="w-4 h-4 animate-spin text-yellow-400" />}
-                {p.status === 'sucesso' && <CheckCircle className="w-4 h-4 text-emerald-400" />}
-                {p.status === 'erro' && <XCircle className="w-4 h-4 text-red-400" />}
-                <span className="text-xs text-zinc-400">{p.status}</span>
+          
+          {/* Estatísticas em tempo real */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 border border-emerald-500/30 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-500/20 rounded-lg">
+                  <CheckCircle className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-white">{sendingStats.sent}</p>
+                  <p className="text-xs text-emerald-400">Enviadas</p>
+                </div>
               </div>
-            ))}
+            </div>
+            
+            <div className="bg-gradient-to-br from-red-500/20 to-red-600/20 border border-red-500/30 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-500/20 rounded-lg">
+                  <XCircle className="w-5 h-5 text-red-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-white">{sendingStats.failed}</p>
+                  <p className="text-xs text-red-400">Falharam</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/20 border border-yellow-500/30 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-yellow-500/20 rounded-lg">
+                  <Clock className="w-5 h-5 text-yellow-400 animate-spin" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-white">{sendingStats.inProgress}</p>
+                  <p className="text-xs text-yellow-400">Enviando</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-gradient-to-br from-cyan-500/20 to-cyan-600/20 border border-cyan-500/30 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-cyan-500/20 rounded-lg">
+                  <TrendingUp className="w-5 h-5 text-cyan-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-white">{sendingStats.total}</p>
+                  <p className="text-xs text-cyan-400">Total</p>
+                </div>
+              </div>
+            </div>
           </div>
+          
+          {/* Barra de progresso animada */}
+          <div className="mb-6">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm text-zinc-300 font-medium">Progresso Geral</span>
+              <span className="text-sm text-zinc-400">
+                {Math.round(((sendingStats.sent + sendingStats.failed) / sendingStats.total) * 100)}%
+              </span>
+            </div>
+            <div className="h-3 bg-zinc-800 rounded-full overflow-hidden relative">
+              <div 
+                className="h-full bg-gradient-to-r from-emerald-500 via-cyan-500 to-emerald-500 transition-all duration-500 ease-out relative"
+                style={{ width: `${((sendingStats.sent + sendingStats.failed) / sendingStats.total) * 100}%` }}
+              >
+                <div className="absolute inset-0 bg-white/20 animate-pulse" />
+              </div>
+              {sendingStats.inProgress > 0 && (
+                <div className="absolute top-0 h-full bg-yellow-400/30 animate-pulse" 
+                     style={{ 
+                       left: `${((sendingStats.sent + sendingStats.failed) / sendingStats.total) * 100}%`,
+                       width: `${(sendingStats.inProgress / sendingStats.total) * 100}%`
+                     }} />
+              )}
+            </div>
+          </div>
+          
+          {/* Lista de envios com design aprimorado */}
+          <div className="max-h-96 overflow-y-auto space-y-3 pr-2">
+            {sendingProgress.map((p, idx) => {
+              const getBlockTypeIcon = (type: string) => {
+                switch (type) {
+                  case 'texto': return <FileText className="w-4 h-4" />
+                  case 'imagem': return <ImageIcon className="w-4 h-4" />
+                  case 'arquivo': return <FileText className="w-4 h-4" />
+                  case 'audio': return <Mic className="w-4 h-4" />
+                  case 'enquete': return <BarChart3 className="w-4 h-4" />
+                  case 'botao': return <MousePointer className="w-4 h-4" />
+                  default: return <FileText className="w-4 h-4" />
+                }
+              }
+              
+              const getStatusBg = (status: string) => {
+                switch (status) {
+                  case 'enviando': return 'bg-gradient-to-r from-yellow-500/10 to-yellow-600/10 border-yellow-500/30'
+                  case 'sucesso': return 'bg-gradient-to-r from-emerald-500/10 to-emerald-600/10 border-emerald-500/30'
+                  case 'erro': return 'bg-gradient-to-r from-red-500/10 to-red-600/10 border-red-500/30'
+                  default: return 'bg-zinc-800/50 border-zinc-700'
+                }
+              }
+              
+              return (
+                <div key={idx} className={`flex items-center gap-4 p-4 rounded-xl border transition-all duration-300 hover:scale-[1.02] ${getStatusBg(p.status)}`}>
+                  {/* Bloco info */}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="p-2 bg-zinc-700/50 rounded-lg text-zinc-400">
+                      {getBlockTypeIcon(p.blockType)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs text-zinc-400">Bloco {p.blocoIndex + 1}</p>
+                      <p className="text-xs text-zinc-500 capitalize">{p.blockType}</p>
+                    </div>
+                  </div>
+                  
+                  {/* Contato info */}
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Phone className="w-4 h-4 text-cyan-400" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-white truncate">{p.contactName}</p>
+                        <p className="text-xs text-zinc-400 truncate font-mono">{p.numero}</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Conteúdo */}
+                  <div className="flex items-center gap-2 min-w-0 max-w-xs">
+                    <Eye className="w-3 h-3 text-zinc-500" />
+                    <span className="text-xs text-zinc-300 truncate">
+                      {p.blocoContent.length > 30 ? `${p.blocoContent.slice(0, 30)}...` : p.blocoContent}
+                    </span>
+                  </div>
+                  
+                  {/* Status e timing */}
+                  <div className="flex items-center gap-3">
+                    {p.duration && p.duration > 0 && (
+                      <div className="flex items-center gap-1 text-xs text-zinc-500">
+                        <Timer className="w-3 h-3" />
+                        <span>{(p.duration / 1000).toFixed(1)}s</span>
+                      </div>
+                    )}
+                    
+                    <div className="flex items-center gap-2">
+                      {p.status === 'enviando' && (
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
+                          <Clock className="w-4 h-4 animate-spin text-yellow-400" />
+                        </div>
+                      )}
+                      {p.status === 'sucesso' && (
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-emerald-400 rounded-full" />
+                          <CheckCircle className="w-4 h-4 text-emerald-400" />
+                        </div>
+                      )}
+                      {p.status === 'erro' && (
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse" />
+                          <XCircle className="w-4 h-4 text-red-400" />
+                        </div>
+                      )}
+                      {p.status === 'pendente' && (
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-zinc-400 rounded-full" />
+                          <Clock className="w-4 h-4 text-zinc-400" />
+                        </div>
+                      )}
+                      <span className={`text-xs font-medium capitalize ${
+                        p.status === 'sucesso' ? 'text-emerald-400' : 
+                        p.status === 'erro' ? 'text-red-400' : 
+                        p.status === 'enviando' ? 'text-yellow-400' : 'text-zinc-400'}`}>
+                        {p.status === 'sucesso' ? 'Enviada' : 
+                         p.status === 'erro' ? 'Falhou' : 
+                         p.status === 'enviando' ? 'Enviando' : 'Pendente'}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Timestamp */}
+                  <div className="text-xs text-zinc-500 min-w-0">
+                    {p.timestamp?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          
+          {/* Botão de fechamento */}
           {!isSending && (
-            <Button className="mt-4 w-full" onClick={() => setShowSendingDialog(false)}>
-              Fechar
-            </Button>
+            <div className="flex items-center gap-4 mt-6 pt-4 border-t border-zinc-700">
+              <div className="flex items-center gap-2 text-sm text-zinc-400">
+                <Sparkles className="w-4 h-4" />
+                <span>Disparo concluído com sucesso!</span>
+              </div>
+              <Button 
+                className="ml-auto bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-black font-medium" 
+                onClick={() => setShowSendingDialog(false)}
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Fechar
+              </Button>
+            </div>
           )}
         </ProgressDialogContent>
       </ProgressDialog>
