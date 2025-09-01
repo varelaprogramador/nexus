@@ -20,6 +20,8 @@ import { useInstances } from "@/hooks/use-instances"
 import useDisparo from '@/hooks/use-disparo'
 import { Dialog as ProgressDialog, DialogContent as ProgressDialogContent, DialogHeader as ProgressDialogHeader, DialogTitle as ProgressDialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
+import { useUser } from "@clerk/nextjs"
+import { useRouter } from "next/navigation"
 
 interface Contact {
   id: string
@@ -957,6 +959,8 @@ function getMimeType(file: File): string {
 export default function MassDispatchPage() {
   const apikey = process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || ""
   const { data: instances = [] } = useInstances()
+  const { user } = useUser()
+  const router = useRouter()
   const [selectedInstance, setSelectedInstance] = useState<string>("")
   const [messageBlocks, setMessageBlocks] = useState<MessageBlock[]>([{ id: "1", type: "text", content: "" }])
   const [contactsDialogOpen, setContactsDialogOpen] = useState(false)
@@ -1314,6 +1318,83 @@ export default function MassDispatchPage() {
     }
   }
 
+  const handleSaveCampaign = async () => {
+    if (selectedContacts.length === 0) {
+      toast.error("Selecione pelo menos um contato")
+      return
+    }
+
+    if (!selectedInstance) {
+      toast.error("Selecione uma instância")
+      return
+    }
+
+    // Verificar se há blocos válidos
+    const validBlocks = messageBlocks.filter((block) => {
+      switch (block.type) {
+        case "text":
+          return block.content.trim().length > 0
+        case "image":
+        case "file":
+        case "audio":
+          return !!block.file
+        case "poll":
+          return !!(block.pollName && block.pollOptions?.length)
+        case "button":
+          return !!(block.buttonTitle && block.buttonList?.length)
+        default:
+          return false
+      }
+    })
+
+    if (validBlocks.length === 0) {
+      toast.error("Configure pelo menos uma mensagem válida")
+      return
+    }
+
+    const campaignName = prompt("Digite um nome para a campanha:")
+    if (!campaignName) return
+
+    try {
+      const response = await fetch("/api/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: campaignName,
+          description: `Campanha criada a partir do disparo em massa - ${validBlocks.length} blocos, ${selectedContacts.length} contatos`,
+          instance: selectedInstance,
+          userId: user?.id,
+          messageBlocks: validBlocks.map(block => ({
+            ...block,
+            delay: block.delay ?? delay
+          })),
+          contacts: selectedContacts.map(contact => ({
+            id: contact.id,
+            name: contact.name,
+            phone: contact.phone,
+            number: contact.phone
+          })),
+          settings: {
+            defaultDelay: delay
+          }
+        })
+      })
+
+      if (response.ok) {
+        toast.success("Campanha salva com sucesso! Redirecionando...")
+        setTimeout(() => {
+          router.push("/campaigns")
+        }, 1500)
+      } else {
+        const error = await response.json()
+        toast.error(error.error || "Erro ao salvar campanha")
+      }
+    } catch (error) {
+      console.error("Erro ao salvar campanha:", error)
+      toast.error("Erro ao salvar campanha")
+    }
+  }
+
   const removeContact = (contactId: string) => {
     setSelectedContacts(selectedContacts.filter((c) => c.id !== contactId))
   }
@@ -1531,9 +1612,19 @@ export default function MassDispatchPage() {
                 ) : (
                   <>
                     <Send className="w-4 h-4 mr-2" />
-                    Enviar Agora
+                    Enviar Agora (Sync)
                   </>
                 )}
+              </Button>
+              
+              <Button
+                onClick={handleSaveCampaign}
+                disabled={selectedContacts.length === 0 || !selectedInstance}
+                variant="outline"
+                className="border-zinc-600 text-zinc-300 hover:bg-zinc-700 flex-1"
+              >
+                <Target className="w-4 h-4 mr-2" />
+                Salvar como Campanha
               </Button>
             </div>
           </div>

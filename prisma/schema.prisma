@@ -50,3 +50,64 @@ model Instance {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 }
+
+model SystemConfig {
+  id             String   @id @default("global") // ID fixo "global" - apenas uma linha
+  logoUrl        String? // URL do logo personalizado
+  logoBase64     String? // Logo armazenado como base64 (alternativa)
+  systemName     String   @default("NEXUS") // Nome do sistema
+  systemSubtitle String   @default("WhatsApp Manager") // Subtítulo/descrição
+  primaryColor   String   @default("#10b981") // Cor primária (emerald-500)
+  secondaryColor String   @default("#06b6d4") // Cor secundária (cyan-500)
+  favicon        String? // URL do favicon personalizado
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Campaign {
+  id             String           @id @default(uuid())
+  name           String           // Nome da campanha
+  description    String?          // Descrição opcional
+  instance       String           // Nome da instância a ser utilizada
+  status         CampaignStatus   @default(DRAFT) // Status da campanha
+  scheduledAt    DateTime?        // Quando executar (null = imediato)
+  startedAt      DateTime?        // Quando iniciou a execução
+  completedAt    DateTime?        // Quando terminou
+  userId         String           // ID do usuário (Clerk)
+  totalContacts  Int              @default(0) // Total de contatos
+  sentCount      Int              @default(0) // Quantidade enviada
+  deliveredCount Int              @default(0) // Quantidade entregue
+  failedCount    Int              @default(0) // Quantidade falhada
+  messageBlocks  Json             // Blocos de mensagem (texto, imagem, etc)
+  contacts       Json             // Lista de contatos (números)
+  settings       Json?            // Configurações específicas da campanha
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  
+  // Relação com logs
+  logs           CampaignExecution[]
+}
+
+model CampaignExecution {
+  id          String   @id @default(uuid())
+  campaignId  String   // ID da campanha
+  blockIndex  Int      // Índice do bloco de mensagem
+  contact     String   // Número do contato
+  status      String   // Status do envio (pending, sending, sent, delivered, failed)
+  attemptedAt DateTime? // Quando foi tentado o envio
+  sentAt      DateTime? // Quando foi enviado
+  error       String?  // Erro, se houver
+  response    Json?    // Resposta da API
+  createdAt   DateTime @default(now())
+  
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+}
+
+enum CampaignStatus {
+  DRAFT      // Rascunho
+  SCHEDULED  // Agendada
+  RUNNING    // Executando
+  PAUSED     // Pausada
+  COMPLETED  // Concluída
+  CANCELLED  // Cancelada
+}

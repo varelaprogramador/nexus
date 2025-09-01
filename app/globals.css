@@ -73,3 +73,86 @@
 * {
   transition: all 0.2s ease-in-out;
 }
+
+/* Dynamic color system - Override hardcoded colors with CSS custom properties */
+:root {
+  --custom-primary: #10b981;
+  --custom-secondary: #06b6d4;
+  --custom-primary-rgb: 16, 185, 129;
+  --custom-secondary-rgb: 6, 182, 212;
+}
+
+/* Override emerald colors with custom primary */
+.bg-emerald-400,
+.bg-emerald-500,
+.bg-emerald-600 {
+  background-color: var(--custom-primary) !important;
+}
+
+.text-emerald-400,
+.text-emerald-500 {
+  color: var(--custom-primary) !important;
+}
+
+.border-emerald-400,
+.border-emerald-500 {
+  border-color: var(--custom-primary) !important;
+}
+
+.from-emerald-400,
+.from-emerald-500 {
+  --tw-gradient-from: var(--custom-primary) var(--tw-gradient-from-position) !important;
+}
+
+.to-emerald-400,
+.to-emerald-500 {
+  --tw-gradient-to: var(--custom-primary) var(--tw-gradient-to-position) !important;
+}
+
+/* Override cyan colors with custom secondary */
+.bg-cyan-400,
+.bg-cyan-500 {
+  background-color: var(--custom-secondary) !important;
+}
+
+.text-cyan-400,
+.text-cyan-500 {
+  color: var(--custom-secondary) !important;
+}
+
+.border-cyan-400,
+.border-cyan-500 {
+  border-color: var(--custom-secondary) !important;
+}
+
+.from-cyan-400,
+.from-cyan-500 {
+  --tw-gradient-from: var(--custom-secondary) var(--tw-gradient-from-position) !important;
+}
+
+.to-cyan-400,
+.to-cyan-500 {
+  --tw-gradient-to: var(--custom-secondary) var(--tw-gradient-to-position) !important;
+}
+
+/* Override hover states */
+.hover\:bg-emerald-600:hover,
+.hover\:bg-emerald-700:hover {
+  background-color: var(--custom-primary) !important;
+  filter: brightness(0.9);
+}
+
+.hover\:text-emerald-400:hover {
+  color: var(--custom-primary) !important;
+}
+
+/* Override shadow colors */
+.shadow-emerald-500\/25,
+.shadow-emerald-400\/30 {
+  box-shadow: 0 0 20px rgba(var(--custom-primary-rgb), 0.25) !important;
+}
+
+/* Pulse animations */
+.animate-pulse.bg-emerald-400 {
+  background-color: var(--custom-primary) !important;
+}
