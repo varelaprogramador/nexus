@@ -28,17 +28,21 @@ import { Badge } from "@/components/ui/badge"
 
 import { useEffect, useState } from "react"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { useUser } from "@clerk/nextjs"
 
 
 export default function DashboardPage() {
+  const { user } = useUser()
   const [logs, setLogs] = useState<any[]>([])
   const [loadingLogs, setLoadingLogs] = useState(true)
 
   useEffect(() => {
     const fetchLogs = async () => {
+      if (!user?.id) return
+      
       setLoadingLogs(true)
       try {
-        const res = await fetch('/api/log')
+        const res = await fetch(`/api/log?userId=${user.id}`)
         const data = await res.json()
         setLogs(data.logs || [])
       } catch (e) {
@@ -48,7 +52,7 @@ export default function DashboardPage() {
       }
     }
     fetchLogs()
-  }, [])
+  }, [user?.id])
 
   // KPIs dinâmicos a partir dos logs reais
   const totalSent = logs.length

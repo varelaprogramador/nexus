@@ -1,6 +1,6 @@
 "use client"
 
-import { Target, Activity, Clock, CheckCircle, XCircle, Users, Send, Calendar, Plus, X, Zap, FileText, ImageIcon, Mic, BarChart3, MousePointer } from "lucide-react"
+import { Target, Activity, Clock, CheckCircle, XCircle, Users, Send, Calendar, Plus, X, Zap, FileText, ImageIcon, Mic, BarChart3, MousePointer, Download, BookOpen, Info, AlertCircle, CheckSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -22,6 +22,8 @@ import { Dialog as ProgressDialog, DialogContent as ProgressDialogContent, Dialo
 import { toast } from "sonner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import FileUploadTable from "@/components/FileUploadTable"
+import * as XLSX from 'xlsx'
+import { saveAs } from 'file-saver'
 
 interface Contact {
   id: string
@@ -960,6 +962,63 @@ export default function MassDispatchPage() {
   const apikey = process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || ""
   const { data: instances = [] } = useInstances()
   const [selectedInstance, setSelectedInstance] = useState<string>("")
+
+  // Função para baixar planilha modelo
+  const downloadTemplate = () => {
+    // Dados de exemplo para a planilha modelo
+    const templateData = [
+      {
+        nome: "João Silva",
+        telefone: "5543999887766",
+        email: "joao@exemplo.com",
+        empresa: "Tech Solutions Ltda",
+        cargo: "Gerente de Vendas",
+        cidade: "São Paulo"
+      },
+      {
+        nome: "Maria Santos",
+        telefone: "5511888776655",
+        email: "maria@exemplo.com",
+        empresa: "Digital Marketing Co",
+        cargo: "Coordenadora de Marketing",
+        cidade: "Rio de Janeiro"
+      },
+      {
+        nome: "Pedro Costa",
+        telefone: "5521777665544",
+        email: "pedro@exemplo.com",
+        empresa: "Innovation Hub",
+        cargo: "Desenvolvedor Senior",
+        cidade: "Belo Horizonte"
+      }
+    ]
+
+    // Criar workbook
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet(templateData)
+
+    // Adicionar algumas configurações de estilo (largura das colunas)
+    const colWidths = [
+      { wch: 20 }, // nome
+      { wch: 15 }, // telefone
+      { wch: 25 }, // email
+      { wch: 25 }, // empresa
+      { wch: 20 }, // cargo
+      { wch: 15 }  // cidade
+    ]
+    ws['!cols'] = colWidths
+
+    // Adicionar a worksheet ao workbook
+    XLSX.utils.book_append_sheet(wb, ws, "Contatos")
+
+    // Gerar o arquivo Excel
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+    const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8' })
+
+    // Fazer download
+    saveAs(data, 'planilha-modelo-disparo.xlsx')
+    toast.success('Planilha modelo baixada com sucesso!')
+  }
   const [messageBlocks, setMessageBlocks] = useState<MessageBlock[]>([{ id: "1", type: "text", content: "" }])
   const [contactsDialogOpen, setContactsDialogOpen] = useState(false)
   const [selectedContacts, setSelectedContacts] = useState<Contact[]>([])
@@ -1285,10 +1344,31 @@ export default function MassDispatchPage() {
   const [selectedRows, setSelectedRows] = useState<any[]>([])
   const [selectedColumns, setSelectedColumns] = useState<string[]>([])
   const [numberRestriction, setNumberRestriction] = useState<string>("")
+  
+  // Estado para controlar modal de documentação
+  const [showDocumentation, setShowDocumentation] = useState(false)
 
   return (
     <div className="bg-gradient-to-br from-black via-zinc-950 to-black p-4 md:py-4">
       <div className="space-y-6 md:space-y-8 max-w-4xl mx-auto">
+        {/* Cabeçalho com título e botão de documentação */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">
+              Disparo em Massa
+            </h1>
+            <p className="text-zinc-400 mt-1">Envie mensagens personalizadas para múltiplos contatos</p>
+          </div>
+          <Button
+            onClick={() => setShowDocumentation(true)}
+            variant="outline"
+            className="border-blue-600 text-blue-400 hover:bg-blue-600/10 hover:border-blue-500 transition-all duration-200"
+          >
+            <BookOpen className="w-4 h-4 mr-2" />
+            Documentação Disparo
+          </Button>
+        </div>
+
         {/* Stepper visual */}
         <div className="flex items-center justify-between mb-8">
           {[1, 2, 3, 4, 5].map((s, i) => (
@@ -1343,10 +1423,34 @@ export default function MassDispatchPage() {
           <Card className="bg-gradient-to-br from-zinc-900 to-zinc-800 border-zinc-700/50 shadow-xl shadow-black/20">
             <CardHeader>
               <CardTitle className="text-white text-xl flex items-center">Upload de Planilha</CardTitle>
-              <CardDescription className="text-zinc-400">Faça upload de uma planilha Excel (.xlsx) ou CSV. Todas as colunas serão reconhecidas como variáveis.</CardDescription>
+              <CardDescription className="text-zinc-400">
+                Faça upload de uma planilha Excel (.xlsx) ou CSV. Todas as colunas serão reconhecidas como variáveis.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Botão para baixar planilha modelo */}
+              <div className="flex justify-center">
+                <Button
+                  onClick={downloadTemplate}
+                  variant="outline"
+                  className="border-emerald-600 text-emerald-400 hover:bg-emerald-600/10 hover:border-emerald-500 transition-all duration-200"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Baixar Planilha Modelo
+                </Button>
+              </div>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-zinc-700" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-zinc-900 px-2 text-zinc-400">ou faça upload da sua planilha</span>
+                </div>
+              </div>
+
               <FileUploadTable onData={(d, c) => { setFileData(d); setFileColumns(c); setSelectedRows(d); setSelectedColumns(c); }} />
+              
               <div className="flex justify-between">
                 <Button variant="outline" onClick={() => setStep(1)}>Voltar</Button>
                 <Button onClick={() => fileData.length > 0 && setStep(3)} disabled={fileData.length === 0} className="bg-emerald-600 text-white">Próximo</Button>
@@ -1461,6 +1565,218 @@ export default function MassDispatchPage() {
         instanceName={selectedInstance}
         apikey={process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || ""}
       />
+
+      {/* Modal de Documentação */}
+      <Dialog open={showDocumentation} onOpenChange={setShowDocumentation}>
+        <DialogContent className="max-w-4xl bg-zinc-900 border-zinc-700 max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2 text-xl">
+              <BookOpen className="w-6 h-6 text-emerald-400" />
+              Documentação - Disparo em Massa
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 mt-4">
+            {/* Como Funciona */}
+            <div className="space-y-3">
+              <h3 className="text-lg font-semibold text-emerald-400 flex items-center gap-2">
+                <Info className="w-5 h-5" />
+                Como Funciona o Sistema
+              </h3>
+              <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-700/50">
+                <p className="text-zinc-300 leading-relaxed mb-3">
+                  O sistema de disparo em massa permite enviar mensagens personalizadas para múltiplos contatos através de planilhas Excel ou CSV.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-white">Etapas do Processo:</h4>
+                    <ol className="list-decimal list-inside space-y-1 text-sm text-zinc-300">
+                      <li>Selecionar instância do WhatsApp</li>
+                      <li>Fazer upload da planilha</li>
+                      <li>Escolher linhas e colunas</li>
+                      <li>Compor mensagem com variáveis</li>
+                      <li>Configurar e disparar</li>
+                    </ol>
+                  </div>
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-white">Recursos Disponíveis:</h4>
+                    <ul className="space-y-1 text-sm text-zinc-300">
+                      <li>• Múltiplos tipos de mensagem</li>
+                      <li>• Personalização com variáveis</li>
+                      <li>• Controle de delay entre envios</li>
+                      <li>• Monitoramento em tempo real</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Formatos de Número Aceitos */}
+            <div className="space-y-3">
+              <h3 className="text-lg font-semibold text-emerald-400 flex items-center gap-2">
+                <AlertCircle className="w-5 h-5" />
+                Formatos de Número Aceitos
+              </h3>
+              <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-700/50">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <h4 className="font-medium text-white mb-3">✅ Formatos Válidos:</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="bg-emerald-900/20 border border-emerald-700/50 p-2 rounded">
+                        <code className="text-emerald-300">5543999887766</code>
+                        <span className="text-zinc-400 ml-2">(Recomendado)</span>
+                      </div>
+                      <div className="bg-emerald-900/20 border border-emerald-700/50 p-2 rounded">
+                        <code className="text-emerald-300">+5543999887766</code>
+                      </div>
+                      <div className="bg-emerald-900/20 border border-emerald-700/50 p-2 rounded">
+                        <code className="text-emerald-300">(43) 99988-7766</code>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-white mb-3">❌ Formatos Inválidos:</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="bg-red-900/20 border border-red-700/50 p-2 rounded">
+                        <code className="text-red-300">43999887766</code>
+                        <span className="text-zinc-400 ml-2">(Sem código país)</span>
+                      </div>
+                      <div className="bg-red-900/20 border border-red-700/50 p-2 rounded">
+                        <code className="text-red-300">999887766</code>
+                        <span className="text-zinc-400 ml-2">(Incompleto)</span>
+                      </div>
+                      <div className="bg-red-900/20 border border-red-700/50 p-2 rounded">
+                        <code className="text-red-300">abc123def</code>
+                        <span className="text-zinc-400 ml-2">(Caracteres inválidos)</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 p-3 bg-blue-900/20 border border-blue-700/50 rounded">
+                  <p className="text-blue-300 text-sm">
+                    <strong>Dica:</strong> Para números brasileiros, use o formato completo com código do país (55), 
+                    DDD e número com 9 dígitos (celular) ou 8 dígitos (fixo).
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Estrutura da Planilha */}
+            <div className="space-y-3">
+              <h3 className="text-lg font-semibold text-emerald-400 flex items-center gap-2">
+                <FileText className="w-5 h-5" />
+                Estrutura da Planilha
+              </h3>
+              <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-700/50">
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-medium text-white mb-2">Colunas Recomendadas:</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                      <span className="bg-zinc-700 px-2 py-1 rounded text-center">nome</span>
+                      <span className="bg-zinc-700 px-2 py-1 rounded text-center">telefone</span>
+                      <span className="bg-zinc-700 px-2 py-1 rounded text-center">email</span>
+                      <span className="bg-zinc-700 px-2 py-1 rounded text-center">empresa</span>
+                      <span className="bg-zinc-700 px-2 py-1 rounded text-center">cargo</span>
+                      <span className="bg-zinc-700 px-2 py-1 rounded text-center">cidade</span>
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-white mb-2">Como usar variáveis na mensagem:</h4>
+                    <div className="bg-zinc-700/50 p-3 rounded border border-zinc-600">
+                      <p className="text-zinc-300 mb-2">Exemplo de mensagem:</p>
+                      <div className="bg-black/50 p-2 rounded font-mono text-sm text-emerald-300">
+                        Olá {`{nome}`}, tudo bem?<br/>
+                        Somos da {`{empresa}`} e gostaríamos de conversar com você.<br/>
+                        Seu cargo de {`{cargo}`} nos chamou atenção!
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Tipos de Mensagem */}
+            <div className="space-y-3">
+              <h3 className="text-lg font-semibold text-emerald-400 flex items-center gap-2">
+                <Send className="w-5 h-5" />
+                Tipos de Mensagem Suportados
+              </h3>
+              <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-700/50">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-emerald-400" />
+                      <span className="font-medium text-white">Texto</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <ImageIcon className="w-4 h-4 text-blue-400" />
+                      <span className="font-medium text-white">Imagens</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-purple-400" />
+                      <span className="font-medium text-white">Arquivos (PDF, DOC, etc.)</span>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Mic className="w-4 h-4 text-green-400" />
+                      <span className="font-medium text-white">Áudios</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4 text-yellow-400" />
+                      <span className="font-medium text-white">Enquetes</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MousePointer className="w-4 h-4 text-cyan-400" />
+                      <span className="font-medium text-white">Botões Interativos</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Boas Práticas */}
+            <div className="space-y-3">
+              <h3 className="text-lg font-semibold text-emerald-400 flex items-center gap-2">
+                <CheckSquare className="w-5 h-5" />
+                Boas Práticas e Recomendações
+              </h3>
+              <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-700/50">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <h4 className="font-medium text-white mb-3">✅ Recomendações:</h4>
+                    <ul className="space-y-2 text-sm text-zinc-300">
+                      <li>• Use delay de 5-10 segundos entre envios</li>
+                      <li>• Teste com poucos contatos primeiro</li>
+                      <li>• Personalize mensagens com variáveis</li>
+                      <li>• Verifique se números estão formatados</li>
+                      <li>• Monitore o progresso em tempo real</li>
+                      <li>• Mantenha mensagens claras e objetivas</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-white mb-3">⚠️ Cuidados:</h4>
+                    <ul className="space-y-2 text-sm text-zinc-300">
+                      <li>• Evite spam ou mensagens inadequadas</li>
+                      <li>• Respeite horários comerciais</li>
+                      <li>• Não envie para números desconhecidos</li>
+                      <li>• Tenha consentimento dos destinatários</li>
+                      <li>• Monitore taxa de bloqueios</li>
+                      <li>• Siga diretrizes do WhatsApp</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end mt-6 pt-4 border-t border-zinc-700">
+            <Button onClick={() => setShowDocumentation(false)} className="bg-emerald-600 hover:bg-emerald-700">
+              Entendi, Fechar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       {/* Popup de envio em tempo real */}
       <ProgressDialog open={showSendingDialog} onOpenChange={open => { if (!isSending) setShowSendingDialog(open) }}>
         <ProgressDialogContent className="max-w-xl bg-zinc-900 border-zinc-700">
